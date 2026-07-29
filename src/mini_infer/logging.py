@@ -1,35 +1,44 @@
-"""Library-safe logging helpers."""
-
 import logging
-from collections.abc import Mapping
+import sys
 
-from mini_infer.engine.request import RequestId
+from mini_infer.context import RequestIdFilter
 
 LOGGER_NAME = "mini_infer"
 
 
-def get_logger(name: str = LOGGER_NAME) -> logging.Logger:
-    """Return a library logger without configuring the application's root logger."""
-    logger = logging.getLogger(name)
-    if not logger.handlers:
-        logger.addHandler(logging.NullHandler())
-    return logger
+def configure_logging(level: int = logging.INFO) -> None:
+    """Configure the logging for the application.
 
+    This function configures the logging for the application.
+    It sets the logger level, creates a stream handler to stdout,
+    creates a formatter for the handler, adds the filter to the handler,
+    adds the handler to the logger, and sets the logger to not propagate to the root logger.
+    """
+    # get the logger for the application
+    logger = logging.getLogger(LOGGER_NAME)
+    if logger.handlers:
+        return  # already configured, don't configure again
 
-def log_event(
-    logger: logging.Logger,
-    level: int,
-    event: str,
-    request_id: RequestId,
-    fields: Mapping[str, float | int | str] | None = None,
-    *,
-    exc_info: bool = False,
-) -> None:
-    """Emit a structured lifecycle event without prompt content."""
-    extra: dict[str, float | int | str] = {
-        "event": event,
-        "request_id": str(request_id),
-    }
-    if fields is not None:
-        extra.update(fields)
-    logger.log(level, event, extra=extra, exc_info=exc_info)
+    # set the logger level
+    logger.setLevel(level)
+
+    # create a stream handler to stdout
+    handler = logging.StreamHandler(sys.stdout)
+
+    # create a formatter for the handler
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] [req_id:%(request_id)s] "
+        "[%(name)s] [%(filename)s:%(lineno)d] - %(message)s"
+    )
+
+    # set the formatter for the handler
+    handler.setFormatter(formatter)
+
+    # add the filter to the handler
+    handler.addFilter(RequestIdFilter())
+
+    # add the handler to the logger
+    logger.addHandler(handler)
+
+    # don't propagate the logger to the root logger
+    logger.propagate = False

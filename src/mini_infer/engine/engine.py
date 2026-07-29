@@ -6,7 +6,8 @@ from time import perf_counter
 
 from mini_infer.engine.request import GenerationResult, InferenceRequest, RequestId
 from mini_infer.exceptions import MiniInferError, ModelExecutionError, TokenizationError
-from mini_infer.logging import get_logger, log_event
+
+# from mini_infer.logging import get_logger, log_event
 from mini_infer.protocols import MetricsSink, Model, Sampler, Tokenizer
 
 
@@ -31,12 +32,12 @@ class InferenceEngine:
         self._model = model
         self._sampler = sampler
         self._metrics_sink = metrics_sink or _NullMetricsSink()
-        self._logger = logger or get_logger(__name__)
+        self._logger = logger
 
     def generate(self, request: InferenceRequest) -> GenerationResult:
         """Generate tokens synchronously, translating backend failures to domain errors."""
         started_at = perf_counter()
-        log_event(self._logger, logging.INFO, "request_started", request.request_id)
+        # log_event(self._logger, logging.INFO, "request_started", request.request_id)
         try:
             tokenizer_started_at = perf_counter()
             prompt_token_ids = tuple(self._encode(request.prompt))
@@ -54,13 +55,13 @@ class InferenceEngine:
 
             text = self._decode(generated)
         except MiniInferError:
-            log_event(
-                self._logger,
-                logging.ERROR,
-                "request_failed",
-                request.request_id,
-                exc_info=True,
-            )
+            # log_event(
+            #    self._logger,
+            #    logging.ERROR,
+            #    "request_failed",
+            #    request.request_id,
+            #    exc_info=True,
+            # )
             raise
 
         total_ms = (perf_counter() - started_at) * 1000
@@ -72,13 +73,13 @@ class InferenceEngine:
             "total_ms": total_ms,
         }
         self._metrics_sink.record(request.request_id, metrics)
-        log_event(
-            self._logger,
-            logging.INFO,
-            "request_finished",
-            request.request_id,
-            metrics,
-        )
+        # log_event(
+        #     self._logger,
+        #     logging.INFO,
+        #     "request_finished",
+        #     request.request_id,
+        #     metrics,
+        # )
         return GenerationResult(
             request_id=request.request_id,
             text=text,
@@ -147,4 +148,3 @@ class ModelSession:
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
         del exc_type, exc_value, traceback
         self.close()
-
