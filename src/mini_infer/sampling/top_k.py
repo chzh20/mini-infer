@@ -4,7 +4,7 @@ from math import exp, isfinite
 from random import Random
 
 from mini_infer.config import SamplingConfig
-from mini_infer.exceptions import ConfigurationError, ModelExecutionError
+from mini_infer.exceptions import ModelExecutionError
 from mini_infer.protocols import Logits
 
 
@@ -18,8 +18,6 @@ class TopKSampler:
             raise ModelExecutionError("model returned non-finite logits")
 
         k = config.top_k
-        if k is None:
-            raise ConfigurationError("top_k must be set when using TopKSampler")
         k = min(k, len(logits))
         candidates = sorted(range(len(logits)), key=logits.__getitem__, reverse=True)[:k]
         if k == 1:

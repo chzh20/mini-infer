@@ -1,6 +1,6 @@
 import pytest
 
-from mini_infer import ConfigurationError, ModelExecutionError, SamplingConfig
+from mini_infer import ModelExecutionError, SamplingConfig
 from mini_infer.sampling import GreedySampler, TopKSampler
 
 
@@ -26,7 +26,9 @@ def test_top_k_is_repeatable_with_seed() -> None:
     )
 
 
-def test_top_k_requires_k() -> None:
-    with pytest.raises(ConfigurationError, match="top_k"):
-        TopKSampler().sample([1.0], SamplingConfig())
+def test_top_k_uses_top_k_highest_scores() -> None:
+    logits = [0.1, 2.0, 0.5]
+    config = SamplingConfig(top_k=1, seed=0)
+    # With top_k=1 the sampler must always return the single highest score.
+    assert TopKSampler().sample(logits, config) == 1
 

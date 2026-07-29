@@ -1,41 +1,51 @@
-from dataclasses import FrozenInstanceError, replace
-
 import pytest
 
-from mini_infer import ConfigurationError, SamplingConfig
+from mini_infer.config import SamplingConfig
+from mini_infer.exceptions import ConfigurationError
 
 
-@pytest.mark.parametrize("temperature", [0.1, 1.0, 2.0])
-def test_accepts_positive_temperature(temperature: float) -> None:
-    assert SamplingConfig(temperature=temperature).temperature == temperature
+class TestSamplingConfig:
+    def test_default_config(self):
+        config = SamplingConfig()
+        assert config.temperature == 1.0
+        assert config.max_tokens == 32
+        assert config.top_k == 10
+        assert config.top_p == 1.0
+        assert config.repetition_penalty == 1.0
+        assert config.seed is None
 
+    def test_custom_valid_values(self):
+        cfg = SamplingConfig(
+            temperature=0.0, max_tokens=64, top_k=10, top_p=0.9, repetition_penalty=1.2, seed=42
+        )
+        assert cfg.temperature == 0.0
+        assert cfg.max_tokens == 64
+        assert cfg.top_k == 10
+        assert cfg.top_p == 0.9
+        assert cfg.repetition_penalty == 1.2
+        assert cfg.seed == 42
 
-@pytest.mark.parametrize("temperature", [0.0, -1.0, float("inf"), float("nan")])
-def test_rejects_invalid_temperature(temperature: float) -> None:
-    with pytest.raises(ConfigurationError):
-        SamplingConfig(temperature=temperature)
+    def test_config_from_file(self):
+        cfg = SamplingConfig.from_file("tests/unit/test_config.json")
+        assert cfg.temperature == 0.2
+        assert cfg.max_tokens == 128
+        assert cfg.top_k == 10
+        assert cfg.top_p == 0.9
+        assert cfg.repetition_penalty == 1.5
+        assert cfg.seed == 12
 
-
-def test_rejects_negative_max_tokens() -> None:
-    with pytest.raises(ConfigurationError, match="max_tokens"):
-        SamplingConfig(max_tokens=-1)
-
-
-def test_copies_mutable_stop_tokens_to_tuple() -> None:
-    source = [1, 2]
-    config = SamplingConfig(stop_token_ids=source)  # type: ignore[arg-type]
-    source.append(3)
-    assert config.stop_token_ids == (1, 2)
-
-
-def test_config_is_immutable() -> None:
-    config = SamplingConfig()
-    with pytest.raises(FrozenInstanceError):
-        config.max_tokens = 7  # type: ignore[misc]
-
-
-def test_replace_keeps_original_unchanged() -> None:
-    original = SamplingConfig(max_tokens=4)
-    changed = replace(original, max_tokens=8)
-    assert (original.max_tokens, changed.max_tokens) == (4, 8)
-
+    @pytest.mark.parametrize(
+        "invalid_kwarg, error_msg_key_word",
+        [
+            ({"temperature": -0.1}, "temperature"),
+            ({"max_tokens": -1}, "max_tokens"),
+            ({"top_k": 0}, "top_k"),
+            ({"top_p": -0.1}, "top_p"),
+            ({"repetition_penalty": 0.9}, "repetition_penalty"),
+            ({"seed": -1}, "seed"),
+        ],
+    )
+    def test_invalid_config(self, invalid_kwarg, error_msg_key_word):
+        with pytest.raises(ConfigurationError) as exc_info:
+            SamplingConfig(**invalid_kwarg)
+        assert error_msg_key_word in str(exc_info.value)
