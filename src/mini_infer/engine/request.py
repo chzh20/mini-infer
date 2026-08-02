@@ -3,9 +3,14 @@
 from dataclasses import dataclass, field
 from typing import NewType
 from uuid import uuid4
+import logging
 
 from mini_infer.config import SamplingConfig
 from mini_infer.exceptions import ConfigurationError
+from mini_infer.context import get_request_id, set_request_id
+
+
+logger = logging.getLogger(__name__)
 
 TokenId = NewType("TokenId", int)
 RequestId = NewType("RequestId", str)
@@ -13,8 +18,10 @@ RequestId = NewType("RequestId", str)
 
 def new_request_id() -> RequestId:
     """Return an opaque request identifier suitable for log correlation."""
-    return RequestId(uuid4().hex)
-
+    req_id = set_request_id()
+    logger.info("new_request_id", extra={"request_id": req_id})
+    return RequestId(req_id)
+    
 
 @dataclass(frozen=True, slots=True)
 class InferenceRequest:
