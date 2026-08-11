@@ -2,14 +2,14 @@
 
 > 所属项目：`mini-infer`
 > 前置基础：Day 3 模块边界 / `__all__` / 公共 API 最小化、Day 8 类型标注（`TokenId`/`RequestId`）
-> 学员画像：EDA 工程师，C++ 系统背景（熟悉抽象基类、C++20 `concept`）
+> 学员画像：EDA 工程师，C++系统背景（熟悉抽象基类、C++20 `concept`）
 > 设计依据：`roadmap.md` Day 9「结构化子类型与名义子类型如何选择」
 
 ---
 
 ## 一、学习目标（当天要掌握的核心知识点）
 
-1. 区分 **`abc.ABC`（名义子类型）** 与 **`typing.Protocol`（结构化子类型 / duck typing）** 的本质差异与适用场景。
+1. 区分 `abc.ABC`**（名义子类型）** 与 `typing.Protocol`**（结构化子类型 / duck typing）** 的本质差异与适用场景。
 2. 理解**接口隔离原则（ISP）**：接口应小而专，而非大而全。
 3. 掌握**依赖反转**：高层模块（Engine）依赖抽象接口，不依赖低层细节（具体 tokenizer）。
 4. 区分测试替身：**fake（真实简化实现）vs stub vs mock**，知道「fake 优先于 mock」。
@@ -19,21 +19,35 @@
 
 ## 二、时间分配（建议总时长 ≈ 2 小时）
 
-| 环节 | 内容 | 时长 |
-|------|------|------|
-| 开场 | 目标 + 衔接 Day 8（类型已成，今天用接口组织） | 3 min |
-| 学习内容 1 | `abc.ABC` / `@abstractmethod`（名义子类型） | 12 min |
-| 学习内容 2 | `typing.Protocol`（结构化子类型 / duck typing） | 15 min |
-| 学习内容 3 | ABC vs Protocol 对照 + 何时用哪个 | 10 min |
-| 学习内容 4 | 接口隔离、依赖反转、测试替身 | 13 min |
-| 实践任务 | `Tokenizer(Protocol)` + `WhitespaceTokenizer` + `FakeTokenizer` + Engine 只依赖协议 | 40 min |
-| 复习与收尾 | 三道题自测 + 衔接 Day 10 | 7 min |
+
+| 环节     | 内容                                                                             | 时长     |
+| ------ | ------------------------------------------------------------------------------ | ------ |
+| 开场     | 目标 + 衔接 Day 8（类型已成，今天用接口组织）                                                    | 3 min  |
+| 学习内容 1 | `abc.ABC` / `@abstractmethod`（名义子类型）                                           | 12 min |
+| 学习内容 2 | `typing.Protocol`（结构化子类型 / duck typing）                                        | 15 min |
+| 学习内容 3 | ABC vs Protocol 对照 + 何时用哪个                                                     | 10 min |
+| 学习内容 4 | 接口隔离、依赖反转、测试替身                                                                 | 13 min |
+| 实践任务   | `Tokenizer(Protocol)` + `WhitespaceTokenizer` + `FakeTokenizer` + Engine 只依赖协议 | 40 min |
+| 复习与收尾  | 三道题自测 + 衔接 Day 10                                                              | 7 min  |
+
 
 ---
 
+
+
 ## 三、学习内容
 
+
+
 ### 3.1 `abc.ABC`：名义子类型（需要显式继承）
+
+`abc.ABC` 是 Python 抽象基类（Abstract Base Class）的基类，它体现的是**名义子类型（Nominal Subtyping）**思想
+
+名义子类型的特点:
+
+- 必须**显式继承**某个基类
+- 或者显式注册 (`register`)
+- 才会被认为是该类型的子类
 
 ```python
 from abc import ABC, abstractmethod
@@ -67,25 +81,78 @@ class WhitespaceTokenizer:
 ```
 
 **核心差异（今天最重要的认知）**：
+
 - `ABC` 是「**我说你是**」——靠继承建立关系。
 - `Protocol` 是「**你长得像就是**」——靠结构（方法签名）建立关系，即结构化子类型，等同 C++20 `concept` 的「无需继承的约束」。
 
+`abc.ABC` 属于**名义子类型（Nominal Subtyping）**，因为一个类必须通过 `class X(Base)` 或 `Base.register(X)` 显式声明关系，才会被认为是该抽象类型的子类型；仅仅拥有相同的方法签名并不足够。`typing.Protocol` 则属于**结构子类型（Structural Subtyping）**，只要结构匹配，就自动被认为是该类型。
+
+名义子类型（ABC）通过显式继承建立类型关系，解决“你是什么”的问题；结构子类型（Protocol）通过接口结构建立类型关系，解决“你会什么”的问题。ABC 更强调约束和体系，Protocol 更强调解耦和扩展能力。在现代 Python 项目里，能力建模优先考虑 Protocol，领域模型和框架基类优先考虑 ABC。
+
 ### 3.3 ABC vs Protocol 对照
 
-| 维度 | `abc.ABC` | `typing.Protocol` |
-|------|-----------|-------------------|
-| 建立关系的方式 | 显式继承 | 结构匹配（duck typing） |
-| 对第三方类的侵入 | 必须改继承 | 零侵入（HF tokenizer 不用改） |
-| 运行时 | 有 `isinstance` 检查（需 `abc`） | 仅静态检查，运行时不强制 |
-| C++ 类比 | 抽象基类 | C++20 `concept` |
-| 适用 | 你拥有、需统一基线的类 | 隔离第三方 / 解耦高层与实现 |
 
-**经验法则**：**隔离第三方、解耦高层模块 → 用 `Protocol`**；需要 `isinstance` 检查或共享基类状态 → 用 `ABC`。
+| 维度       | `abc.ABC`                  | `typing.Protocol`     |
+| -------- | -------------------------- | --------------------- |
+| 建立关系的方式  | 显式继承                       | 结构匹配（duck typing）     |
+| 对第三方类的侵入 | 必须改继承                      | 零侵入（HF tokenizer 不用改） |
+| 运行时      | 有 `isinstance` 检查（需 `abc`） | 仅静态检查，运行时不强制          |
+| C++ 类比   | 抽象基类                       | C++20 `concept`       |
+| 适用       | 你拥有、需统一基线的类                | 隔离第三方 / 解耦高层与实现       |
+
+
+**经验法则**：**隔离第三方、解耦高层模块 → 用** `Protocol`；需要 `isinstance` 检查或共享基类状态 → 用 `ABC`。
 
 ### 3.4 接口隔离、依赖反转、测试替身
 
-- **接口隔离（ISP）**：`Tokenizer` 只声明 `encode/decode`，不把「训练、保存词表、对齐」塞进来。调用方依赖最小接口。
-- **依赖反转（DIP）**：`InferenceEngine` 依赖 `Tokenizer`（抽象），而不是 `WhitespaceTokenizer` 或 `HuggingFaceTokenizerAdapter`（细节）。这样换 tokenizer 不动 Engine——这是 Week 2 的主线。
+ **接口隔离（ISP）**：不应该强迫客户端依赖它不需要的方法。更通俗地说：
+
+> 接口要小，要专注
+
+`Tokenizer` 只声明 `encode/decode`，不把「训练、保存词表、对齐」塞进来。调用方依赖最小接口。
+ISP 的目标是避免“胖接口（Fat Interface）”，让调用方只依赖最小必要能力。
+
+ **依赖反转（DIP）**: 
+ 经典定义：
+
+> High-level modules should not depend on low-level modules.
+>
+> Both should depend on abstractions.
+
+ 翻译：
+
+> 高层模块不要依赖具体实现，而应该依赖抽象
+
+  为什么叫“依赖反转”
+  传统设计：
+
+```c++
+Engine
+    ↓
+HuggingFaceTokenizer
+```
+
+高层依赖低层。
+
+反转后：  
+
+```c++
+InferenceEngine
+        ↓
+    Tokenizer
+        ↑
+WhitespaceTokenizer
+HFTokenizerAdapter
+```
+
+ `InferenceEngine` 依赖 `Tokenizer`（抽象），而不是 `WhitespaceTokenizer` 或 `HuggingFaceTokenizerAdapter`（细节）。这样换 tokenizer 不动 Engine.
+
+高层和低层都依赖：Tokenizer 这个抽象，因此叫Dependency Inversion.
+
+DIP 不是消灭依赖，而是把依赖从具体实现转向抽象接口。
+
+
+
 - **测试替身选择**（呼应 Day 6）：
   - **fake**：行为简单但真实的实现（如 `FakeTokenizer` 真的做 split/join）。能抓逻辑 bug，**优先用**。
   - **stub**：只返回预设值，不关心逻辑。
@@ -93,10 +160,14 @@ class WhitespaceTokenizer:
 
 ---
 
+
+
 ## 四、实践任务
 
-**任务 1（基础）— 定义 `Tokenizer(Protocol)`**
+**任务 1（基础）— 定义** `Tokenizer(Protocol)`
+
 - 新建 `src/mini_infer/protocols.py`，写入：
+
 ```python
 from typing import Protocol, Sequence
 from .types import TokenId, TokenSequence
@@ -110,14 +181,17 @@ class Sampler(Protocol):     # 预告 Day 11
 ```
 
 **任务 2（基础）— 实现两个满足协议的具体类**
+
 - `tokenizer/whitespace.py`：`WhitespaceTokenizer`（真实按空格切分，可带简单词表）。
 - `tokenizer/fake.py`：`FakeTokenizer`——`encode` 把每个字符映射为 `ord(c)`，`decode` 还原。这是 Day 6 已用的替身，今天正式定义为满足 `Tokenizer` 协议。
 
-**任务 3（进阶）— 让 `InferenceEngine` 只依赖协议**
+**任务 3（进阶）— 让** `InferenceEngine` **只依赖协议**
+
 - 改造 `engine/engine.py`：构造函数接收 `tokenizer: Tokenizer`（协议类型），内部**不 import** 任何具体 tokenizer 类。
 - 写一段 `generate` 调用，分别用 `WhitespaceTokenizer` 和 `FakeTokenizer` 注入，验证行为一致。
 
 **检查点 / 预期输出**
+
 ```python
 from mini_infer.engine import InferenceEngine
 from mini_infer.tokenizer.whitespace import WhitespaceTokenizer
@@ -128,9 +202,12 @@ eng_b = InferenceEngine(tokenizer=FakeTokenizer())   # 类型检查通过（都�
 assert isinstance(eng_a.tokenizer, WhitespaceTokenizer)
 assert isinstance(eng_b.tokenizer, FakeTokenizer)
 ```
+
 断言（mypy + 运行）：两个 engine 均能 `generate`；`engine.py` 中**没有** `from .tokenizer.whitespace import ...` 这类具体 import（依赖反转成立）。
 
 ---
+
+
 
 ## 五、学习重点（难点与关键点）
 
@@ -140,6 +217,8 @@ assert isinstance(eng_b.tokenizer, FakeTokenizer)
 - **fake 优先**：`FakeTokenizer` 是真实实现，不是 mock。它能验证「算得对」，mock 只能验证「被怎么调」。
 
 ---
+
+
 
 ## 六、复习与巩固
 
@@ -153,9 +232,12 @@ assert isinstance(eng_b.tokenizer, FakeTokenizer)
 
 ---
 
+
+
 ## 七、延伸阅读
 
 - Python 官方：`typing.Protocol` 文档；`abc` 模块文档。
 - PEP 544（Protocols / 结构化子类型）。
 - 《Design Patterns》（GoF）：Strategy / Dependency Inversion 原始定义。
 - 衔接：Day 10 组合、Day 11 Strategy（Sampler 即 Protocol）、Day 13 Adapter（隔离第三方，Protocol 是基石）。
+
