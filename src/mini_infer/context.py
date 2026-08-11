@@ -1,5 +1,7 @@
 import logging
 import uuid
+from collections.abc import Generator
+from contextlib import contextmanager
 from contextvars import ContextVar
 
 request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -25,6 +27,21 @@ def get_request_id() -> str | None:
     """
     return request_id_ctx.get()
 
+
+@contextmanager
+def bind_request_id(request_id: str | None = None) -> Generator[None, None, None]:
+    """Bind the request ID to the context. 
+
+    This function binds the request ID to the context.
+    The request ID is stored in a context variable.
+    """
+    token_id = request_id_ctx.set(request_id)
+    try:
+        yield 
+    finally:
+        request_id_ctx.reset(token_id)
+        
+    
 
 class RequestIdFilter(logging.Filter):
     """Filter to add the request ID to the log record.

@@ -4,6 +4,8 @@ import pytest
 from conftest import FixedModel
 
 from mini_infer import InferenceEngine, InferenceRequest, ModelExecutionError, SamplingConfig
+from mini_infer.context import RequestIdFilter
+from mini_infer.engine.request import RequestId
 from mini_infer.sampling import GreedySampler
 from mini_infer.tokenizer import WhitespaceTokenizer
 
@@ -54,4 +56,77 @@ def test_logs_lifecycle_without_prompt(
         engine.generate(InferenceRequest("hello", sampling=SamplingConfig(max_tokens=1)))
     assert {"request_started", "request_finished"} <= {record.message for record in caplog.records}
     assert "hello" not in caplog.text
+
+
+def test_logs_include_inference_started_event(
+    tokenizer: WhitespaceTokenizer,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    logger = logging.getLogger("test-mini-infer-inference")
+    engine = InferenceEngine(
+        tokenizer=tokenizer,
+        model=FixedModel(next_token_id=2),
+        sampler=GreedySampler(),
+        logger=logger,
+    )
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        engine.generate(InferenceRequest("hello", sampling=SamplingConfig(max_tokens=1)))
+    messages = {record.message for record in caplog.records}
+    assert {"request_started", "inference_started", "request_finished"} <= messages
+
+
+def test_filter_injects_request_id_during_generate(tokenizer: WhitespaceTokenizer) -> None:
+    """RequestIdFilter should see the bound request_id for the whole generate() body."""
+    logger = logging.getLogger("test-mini-infer-filter")
+    logger.setLevel(logging.INFO)
+
+    captured: list[str] = []
+
+    class _CapturingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record.__dict__["request_id"])
+
+    handler = _CapturingHandler()
+    handler.addFilter(RequestIdFilter())
+    logger.addHandler(handler)
+    try:
+        engine = InferenceEngine(
+            tokenizer=tokenizer,
+            model=FixedModel(next_token_id=2),
+            sampler=GreedySampler(),
+            logger=logger,
+        )
+        request = InferenceRequest(
+            "hello",
+            request_id=RequestId("req_fixed_123"),
+            sampling=SamplingConfig(max_tokens=1),
+        )
+        engine.generate(request)
+    finally:
+        logger.removeHandler(handler)
+
+    # Every log record emitted inside generate() carried the bound request_id,
+    # never the "-" fallback.
+    assert captured, "expected at least one log record"
+    assert set(captured) == {"req_fixed_123"}
+
+
+def test_context_reset_after_generate(tokenizer: WhitespaceTokenizer) -> None:
+    """The request_id context must not leak outside generate()."""
+    from mini_infer.context import get_request_id, request_id_ctx
+
+    request_id_ctx.set(None)
+    engine = InferenceEngine(
+        tokenizer=tokenizer,
+        model=FixedModel(next_token_id=2),
+        sampler=GreedySampler(),
+    )
+    engine.generate(
+        InferenceRequest(
+            "hello",
+            request_id=RequestId("req_scoped"),
+            sampling=SamplingConfig(max_tokens=1),
+        )
+    )
+    assert get_request_id() is None
 

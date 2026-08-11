@@ -4,10 +4,9 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from time import perf_counter
 
+from mini_infer.context import bind_request_id
 from mini_infer.engine.request import GenerationResult, InferenceRequest, RequestId
 from mini_infer.exceptions import MiniInferError, ModelExecutionError, TokenizationError
-
-# from mini_infer.logging import get_logger, log_event
 from mini_infer.protocols import MetricsSink, Model, Sampler, Tokenizer
 
 logger = logging.getLogger(__name__)
@@ -40,41 +39,50 @@ class InferenceEngine:
         """Generate tokens synchronously, translating backend failures to domain errors."""
         started_at = perf_counter()
 
-        request_id = request.request_id
-        self._logger.info("request_started", extra={"request_id": request_id})
-        
-        try:
-            tokenizer_started_at = perf_counter()
-            prompt_token_ids = tuple(self._encode(request.prompt))
-            tokenizer_ms = (perf_counter() - tokenizer_started_at) * 1000
-            generated: list[int] = []
-            finish_reason = "length"
+        with bind_request_id(request.request_id):
+            self._logger.info("request_started", extra={"request_id": request.request_id})
 
-            for _ in range(request.sampling.max_tokens):
-                logits = self._next_token_logits((*prompt_token_ids, *generated))
-                next_token = self._sampler.sample(logits, request.sampling)
-                generated.append(next_token)
-                if next_token in request.sampling.stop_token_ids:
-                    finish_reason = "stop"
-                    break
+            try:
+                tokenizer_started_at = perf_counter()
+                prompt_token_ids = tuple(self._encode(request.prompt))
+                tokenizer_ms = (perf_counter() - tokenizer_started_at) * 1000
+                generated: list[int] = []
+                finish_reason = "length"
 
-            text = self._decode(generated)
-        except MiniInferError:
-            self._logger.error("request_failed", 
-                               extra={"request_id": request.request_id}, 
-                               exc_info=True)
-            raise
+                self._logger.info(
+                    "inference_started",
+                    extra={"request_id": request.request_id, 
+                           "prompt_tokens": len(prompt_token_ids)},
+                )
 
-        total_ms = (perf_counter() - started_at) * 1000
-        metrics: dict[str, float | int] = {
-            "tokenizer_ms": tokenizer_ms,
-            "prompt_tokens": len(prompt_token_ids),
-            "decode_tokens": len(generated),
-            "cache_tokens": 0,
-            "total_ms": total_ms,
-        }
-        self._metrics_sink.record(request.request_id, metrics)
-        self._logger.info("request_finished", extra={"request_id": request_id, "metrics": metrics})
+                for _ in range(request.sampling.max_tokens):
+                    logits = self._next_token_logits((*prompt_token_ids, *generated))
+                    next_token = self._sampler.sample(logits, request.sampling)
+                    generated.append(next_token)
+                    if next_token in request.sampling.stop_token_ids:
+                        finish_reason = "stop"
+                        break
+
+                text = self._decode(generated)
+            except MiniInferError:
+                self._logger.error(
+                    "request_failed", extra={"request_id": request.request_id}, exc_info=True
+                )
+                raise
+
+            total_ms = (perf_counter() - started_at) * 1000
+            metrics: dict[str, float | int] = {
+                "tokenizer_ms": tokenizer_ms,
+                "prompt_tokens": len(prompt_token_ids),
+                "decode_tokens": len(generated),
+                "cache_tokens": 0,
+                "total_ms": total_ms,
+            }
+            self._metrics_sink.record(request.request_id, metrics)
+            self._logger.info(
+                "request_finished", extra={"request_id": request.request_id, "metrics": metrics}
+            )
+
         return GenerationResult(
             request_id=request.request_id,
             text=text,
