@@ -1,8 +1,8 @@
 import logging
 
 import pytest
-
 from conftest import FixedModel
+
 from mini_infer import InferenceEngine, InferenceRequest, ModelExecutionError, SamplingConfig
 from mini_infer.sampling import GreedySampler
 from mini_infer.tokenizer import WhitespaceTokenizer

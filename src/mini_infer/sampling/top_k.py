@@ -4,6 +4,7 @@ from math import exp, isfinite
 from random import Random
 
 from mini_infer.config import SamplingConfig
+from mini_infer.engine.request import TokenId
 from mini_infer.exceptions import ModelExecutionError
 from mini_infer.protocols import Logits
 
@@ -11,7 +12,7 @@ from mini_infer.protocols import Logits
 class TopKSampler:
     """Sample from the k highest scores after temperature scaling."""
 
-    def sample(self, logits: Logits, config: SamplingConfig) -> int:
+    def sample(self, logits: Logits, config: SamplingConfig) -> TokenId:
         if not logits:
             raise ModelExecutionError("model returned empty logits")
         if not all(isfinite(score) for score in logits):
@@ -21,10 +22,10 @@ class TopKSampler:
         k = min(k, len(logits))
         candidates = sorted(range(len(logits)), key=logits.__getitem__, reverse=True)[:k]
         if k == 1:
-            return candidates[0]
+            return TokenId(candidates[0])
 
         scaled = [logits[index] / config.temperature for index in candidates]
         offset = max(scaled)
         weights = [exp(score - offset) for score in scaled]
-        return Random(config.seed).choices(candidates, weights=weights, k=1)[0]
+        return TokenId(Random(config.seed).choices(candidates, weights=weights, k=1)[0])
 

@@ -2,11 +2,9 @@
 
 from collections.abc import Mapping, Sequence
 from typing import Protocol, TypeAlias
-from typing import NewType
 
 from mini_infer.config import SamplingConfig
-from mini_infer.engine.request import RequestId
-from mini_infer.engine.request import TokenId
+from mini_infer.engine.request import RequestId, TokenId
 
 Logits: TypeAlias = Sequence[float]
 
@@ -15,13 +13,13 @@ class Tokenizer(Protocol):
 
     def encode(self, text: str) -> Sequence[TokenId]: ...
 
-    def decode(self, token_ids: Sequence[TokenId]) -> str: ...
+    def decode(self, token_ids: Sequence[int]) -> str: ...
 
 
 class Model(Protocol):
     """Minimal backend contract used by the initial autoregressive loop."""
 
-    def next_token_logits(self, token_ids: Sequence[TokenId]) -> Logits: ...
+    def next_token_logits(self, token_ids: Sequence[int]) -> Logits: ...
 
 
 class Sampler(Protocol):

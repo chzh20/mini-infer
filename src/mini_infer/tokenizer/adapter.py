@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from typing import Protocol, cast
 
+from mini_infer.engine.request import TokenId
 from mini_infer.exceptions import TokenizationError
 
 
@@ -18,12 +19,12 @@ class HuggingFaceTokenizerAdapter:
     def __init__(self, tokenizer: object) -> None:
         self._tokenizer = cast(_ExternalTokenizer, tokenizer)
 
-    def encode(self, text: str) -> list[int]:
+    def encode(self, text: str) -> list[TokenId]:
         try:
             encoded = self._tokenizer.encode(text, add_special_tokens=False)
             if not isinstance(encoded, list) or not all(isinstance(item, int) for item in encoded):
                 raise TypeError("external tokenizer returned non-integer token IDs")
-            return encoded
+            return [TokenId(item) for item in encoded]
         except Exception as error:
             if isinstance(error, TokenizationError):
                 raise

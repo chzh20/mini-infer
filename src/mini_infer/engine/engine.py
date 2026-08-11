@@ -2,7 +2,6 @@
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
-import re
 from time import perf_counter
 
 from mini_infer.engine.request import GenerationResult, InferenceRequest, RequestId
@@ -10,7 +9,6 @@ from mini_infer.exceptions import MiniInferError, ModelExecutionError, Tokenizat
 
 # from mini_infer.logging import get_logger, log_event
 from mini_infer.protocols import MetricsSink, Model, Sampler, Tokenizer
-
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +34,7 @@ class InferenceEngine:
         self._model = model
         self._sampler = sampler
         self._metrics_sink = metrics_sink or _NullMetricsSink()
-        self._logger = logger
+        self._logger = logger or logging.getLogger(__name__)
 
     def generate(self, request: InferenceRequest) -> GenerationResult:
         """Generate tokens synchronously, translating backend failures to domain errors."""
@@ -62,7 +60,9 @@ class InferenceEngine:
 
             text = self._decode(generated)
         except MiniInferError:
-            self._logger.error("request_failed", extra={"request_id": request.request_id}, exc_info=True)
+            self._logger.error("request_failed", 
+                               extra={"request_id": request.request_id}, 
+                               exc_info=True)
             raise
 
         total_ms = (perf_counter() - started_at) * 1000

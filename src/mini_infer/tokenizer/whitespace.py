@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 
+from mini_infer.engine.request import TokenId
 from mini_infer.exceptions import ConfigurationError, TokenizationError
 
 
@@ -20,10 +21,13 @@ class WhitespaceTokenizer:
         self._unknown_token = unknown_token
         self._unknown_token_id = self._token_to_id[unknown_token]
 
-    def encode(self, text: str) -> list[int]:
+    def encode(self, text: str) -> list[TokenId]:
         if not isinstance(text, str):
             raise TokenizationError("text must be a string")
-        return [self._token_to_id.get(token, self._unknown_token_id) for token in text.split()]
+        return [
+            TokenId(self._token_to_id.get(token, self._unknown_token_id))
+            for token in text.split()
+        ]
 
     def decode(self, token_ids: Sequence[int]) -> str:
         try:

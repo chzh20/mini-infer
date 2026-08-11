@@ -1,14 +1,12 @@
 """Request and result domain objects."""
 
+import logging
 from dataclasses import dataclass, field
 from typing import NewType
-from uuid import uuid4
-import logging
 
 from mini_infer.config import SamplingConfig
+from mini_infer.context import set_request_id
 from mini_infer.exceptions import ConfigurationError
-from mini_infer.context import get_request_id, set_request_id
-
 
 logger = logging.getLogger(__name__)
 
