@@ -1,5 +1,6 @@
 import logging as lg
-from typing import Any
+from types import TracebackType
+from typing import Any, Literal
 
 from mini_infer.config import ModelConfig
 from mini_infer.exceptions import ModelExecutionError
@@ -24,7 +25,12 @@ class ModelSession:
             raise ModelExecutionError(f"Failed to load model: {exc}") from exc
         return self
 
-    def __exit__(self, exc_type, exc_value, exc_tb) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> Literal[False]:
         self._release()
         return False
 

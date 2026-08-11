@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from mini_infer.config import SamplingConfig
@@ -5,7 +7,7 @@ from mini_infer.exceptions import ConfigurationError
 
 
 class TestSamplingConfig:
-    def test_default_config(self):
+    def test_default_config(self) -> None:
         config = SamplingConfig()
         assert config.temperature == 1.0
         assert config.max_tokens == 32
@@ -14,7 +16,7 @@ class TestSamplingConfig:
         assert config.repetition_penalty == 1.0
         assert config.seed is None
 
-    def test_custom_valid_values(self):
+    def test_custom_valid_values(self) -> None:
         cfg = SamplingConfig(
             temperature=0.0, max_tokens=64, top_k=10, top_p=0.9, repetition_penalty=1.2, seed=42
         )
@@ -25,7 +27,7 @@ class TestSamplingConfig:
         assert cfg.repetition_penalty == 1.2
         assert cfg.seed == 42
 
-    def test_config_from_file(self):
+    def test_config_from_file(self) -> None: 
         cfg = SamplingConfig.from_file("tests/unit/test_config.json")
         assert cfg.temperature == 0.2
         assert cfg.max_tokens == 128
@@ -45,7 +47,9 @@ class TestSamplingConfig:
             ({"seed": -1}, "seed"),
         ],
     )
-    def test_invalid_config(self, invalid_kwarg, error_msg_key_word):
-        with pytest.raises(ConfigurationError) as exc_info:
+    def test_invalid_config(
+        self, invalid_kwarg: dict[str, Any], error_msg_key_word: str
+    ) -> None:
+        with pytest.raises(ConfigurationError) as exc_info:  
             SamplingConfig(**invalid_kwarg)
         assert error_msg_key_word in str(exc_info.value)

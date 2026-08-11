@@ -1,14 +1,21 @@
 """Domain exceptions exposed by mini-infer."""
 
+from typing import TypedDict
+
+
+class ErrorDict(TypedDict):
+    message: str
+    error_code: int | None
+
 
 class MiniInferError(Exception):
     """Base class for recoverable mini-infer errors."""
 
-    def __init__(self, message: str, error_code: int | None = None):
+    def __init__(self, message: str, error_code: int | None = None) -> None:
         self.message = message
         self.error_code = error_code
 
-    def to_dict(self):
+    def to_dict(self) -> ErrorDict:
         return {
             "message": self.message,
             "error_code": self.error_code,

@@ -3,13 +3,16 @@
 import json
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from mini_infer.exceptions import ConfigurationError
 
 
-def load_config(file_path: str):
+def load_config(file_path: str) -> dict[str, Any]:
     with open(file_path, encoding="utf-8") as f:
         loaded_data = json.load(f)
+    if not isinstance(loaded_data, dict):
+        raise ConfigurationError("Config file must contain a JSON object", 1014)
     return loaded_data
 
 
@@ -54,7 +57,7 @@ class SamplingConfig:
             raise ConfigurationError("stop_token_ids must contain non-negative integers", 1013)
 
     @classmethod
-    def from_file(cls, file_path: str):
+    def from_file(cls, file_path: str) -> "SamplingConfig":
         try:
             config = load_config(file_path)
             return cls(**config)
