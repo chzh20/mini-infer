@@ -1,0 +1,1930 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vLLM 系统架构深入分析指南 — 新手入门</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --card-bg: #ffffff;
+    --text: #1a1a2e;
+    --text-secondary: #555;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --green: #059669;
+    --green-light: #d1fae5;
+    --orange: #ea580c;
+    --orange-light: #fed7aa;
+    --purple: #7c3aed;
+    --purple-light: #ede9fe;
+    --red: #dc2626;
+    --red-light: #fee2e2;
+    --border: #e2e8f0;
+    --code-bg: #f1f5f9;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --radius: 10px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    font-size: 15px;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 50%, #7c3aed 100%);
+    color: white;
+    padding: 48px 40px;
+    border-radius: 16px;
+    margin-bottom: 40px;
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.15);
+  }
+  .hero h1 { font-size: 28px; margin-bottom: 12px; letter-spacing: -0.5px; }
+  .hero p { font-size: 15px; opacity: 0.9; max-width: 650px; }
+  .hero .badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    backdrop-filter: blur(4px);
+  }
+
+  /* TOC */
+  .toc {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px 28px;
+    margin-bottom: 40px;
+    box-shadow: var(--shadow);
+  }
+  .toc h2 { font-size: 16px; margin-bottom: 12px; color: var(--text); }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin-bottom: 6px; font-size: 14px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .toc .sub { padding-left: 20px; list-style: circle; }
+
+  /* Sections */
+  section {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 36px;
+    margin-bottom: 28px;
+    box-shadow: var(--shadow);
+  }
+
+  h2.section-title {
+    font-size: 22px;
+    margin-bottom: 8px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--accent-light);
+    color: var(--text);
+  }
+  h2.section-title .num {
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+    text-align: center;
+    border-radius: 8px;
+    font-size: 16px;
+    margin-right: 10px;
+  }
+
+  h3 {
+    font-size: 17px;
+    margin-top: 28px;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+  h3 .icon { margin-right: 6px; }
+
+  h4 {
+    font-size: 15px;
+    margin-top: 20px;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+  }
+
+  p { margin-bottom: 14px; color: var(--text); }
+
+  ul, ol { margin-bottom: 14px; padding-left: 24px; }
+  li { margin-bottom: 6px; }
+
+  strong { color: var(--text); font-weight: 600; }
+
+  code {
+    font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #be185d;
+  }
+
+  pre {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 18px 22px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+    font-size: 13px;
+  }
+
+  /* Callout boxes */
+  .callout {
+    border-left: 4px solid;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    border-radius: 0 8px 8px 0;
+    font-size: 14px;
+  }
+  .callout-title { font-weight: 600; margin-bottom: 4px; }
+  .callout.tip { background: var(--green-light); border-color: var(--green); }
+  .callout.tip .callout-title { color: var(--green); }
+  .callout.warn { background: var(--orange-light); border-color: var(--orange); }
+  .callout.warn .callout-title { color: var(--orange); }
+  .callout.info { background: var(--accent-light); border-color: var(--accent); }
+  .callout.info .callout-title { color: var(--accent); }
+  .callout.note { background: var(--purple-light); border-color: var(--purple); }
+  .callout.note .callout-title { color: var(--purple); }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  th {
+    background: var(--accent-light);
+    color: var(--text);
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--accent);
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8fafc; }
+
+  /* SVG container */
+  .svg-wrap {
+    text-align: center;
+    margin: 24px 0;
+  }
+  .svg-wrap svg { max-width: 100%; height: auto; }
+  .svg-caption {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    font-style: italic;
+  }
+
+  /* Learning path steps */
+  .step-card {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    align-items: flex-start;
+  }
+  .step-number {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    background: var(--accent);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 15px;
+  }
+  .step-content { flex: 1; }
+  .step-content h4 { margin-top: 0; color: var(--text); font-size: 15px; }
+  .step-content p { font-size: 14px; margin-bottom: 6px; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  @media (max-width: 640px) {
+    .container { padding: 20px 12px 60px; }
+    section { padding: 24px 18px; }
+    .hero { padding: 32px 24px; }
+    .hero h1 { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ======================== HERO ======================== -->
+<div class="hero">
+  <span class="badge">面向零基础读者 · 由浅入深</span>
+  <h1>vLLM 系统架构深入分析指南</h1>
+  <p>vLLM 是当前最流行的高性能大语言模型（LLM）推理引擎之一。本指南将从新手视角出发，以「前置基础 → 概念引入 → 原理拆解 → 协作流程 → 学习路径」的结构，带你逐步理解 vLLM 的核心架构设计。先夯实 Transformer 自注意力与 LLM 推理两阶段的基础，再深入 PagedAttention、调度器、KV Cache、执行引擎与服务接口五大组件。</p>
+</div>
+
+<!-- ======================== TOC ======================== -->
+<div class="toc">
+  <h2>目录</h2>
+  <ol>
+    <li><a href="#intro">引言：为什么需要 vLLM？</a></li>
+    <li><a href="#overview">整体架构概览</a></li>
+    <li><a href="#foundation">前置基础：Transformer 架构与 LLM 推理两阶段</a></li>
+    <li><a href="#kv-cache">KV Cache 机制：推理的「记忆」</a></li>
+    <li><a href="#paged-attention">PagedAttention：内存管理的革命</a></li>
+    <li><a href="#scheduler">调度器（Scheduler）：交通指挥中心</a></li>
+    <li><a href="#execution-engine">模型执行引擎：GPU 上的实干家</a></li>
+    <li><a href="#api-server">推理服务接口：OpenAI 兼容 API</a></li>
+    <li><a href="#collaboration">组件协作流程：一个请求的完整旅程</a></li>
+    <li><a href="#learning-path">学习路径与建议</a></li>
+  </ol>
+</div>
+
+<!-- ======================== 1. INTRO ======================== -->
+<section id="intro">
+  <h2 class="section-title"><span class="num">1</span>引言：为什么需要 vLLM？</h2>
+
+  <p>当你用 ChatGPT 聊天时，背后发生的事情远比想象中复杂。大语言模型（如 LLaMA、Qwen）动辄数十亿甚至上百亿参数，直接用 HuggingFace Transformers 库做推理，会遇到三个致命瓶颈：</p>
+
+  <div class="callout warn">
+    <div class="callout-title">痛点 1：KV Cache 吃光显存</div>
+    Transformer 自回归生成时，每生成一个 token 都要缓存之前所有 token 的 Key 和 Value 向量。以 LLaMA-70B 处理 4K 上下文为例，仅 KV Cache 就需要约 50GB 显存——比模型权重本身还大。
+  </div>
+
+  <div class="callout warn">
+    <div class="callout-title">痛点 2：静态批处理效率低下</div>
+    传统方法把多个请求打包成一个 batch，必须等最长的请求完成才能释放资源。短请求被迫等待长请求，GPU 大量时间在「陪跑」。
+  </div>
+
+  <div class="callout warn">
+    <div class="callout-title">痛点 3：显存碎片严重</div>
+    传统方法为每个请求预分配最大长度的连续内存。当请求长度参差不齐时，实际显存利用率可能不到 50%。
+  </div>
+
+  <p><strong>vLLM</strong>（Very Large Language Model inference engine）由 UC Berkeley Sky Computing Lab 开发，通过两项核心创新——<strong>PagedAttention</strong> 和<strong>连续批处理（Continuous Batching）</strong>——一举解决了上述问题，将推理吞吐量提升了 2-24 倍，同时大幅降低显存占用。</p>
+
+  <table>
+    <thead>
+      <tr><th>指标</th><th>HuggingFace Transformers</th><th>vLLM</th><th>提升幅度</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>推理吞吐量 (tokens/s)</td><td>~180</td><td>~4,320</td><td>24 倍</td></tr>
+      <tr><td>显存占用 (GB)</td><td>~16.5</td><td>~12.5</td><td>节省 24%</td></tr>
+      <tr><td>平均延迟 (ms/token)</td><td>~5.5</td><td>~0.8</td><td>降低 85%</td></tr>
+      <tr><td>最大并发数</td><td>~8</td><td>128+</td><td>16 倍</td></tr>
+    </tbody>
+  </table>
+
+  <p>接下来，我们将逐一拆解 vLLM 实现这些性能飞跃的核心组件。</p>
+</section>
+
+<!-- ======================== 2. OVERVIEW ======================== -->
+<section id="overview">
+  <h2 class="section-title"><span class="num">2</span>整体架构概览</h2>
+
+  <p>vLLM 采用<strong>分层架构</strong>，每一层职责清晰、边界明确。可以用一个「高速公路系统」的类比来理解：</p>
+
+  <ul>
+    <li><strong>收费站（Entrypoints）</strong>：用户请求从这里进入系统</li>
+    <li><strong>交通指挥中心（Scheduler）</strong>：决定哪些请求优先处理、如何组队</li>
+    <li><strong>分页停车场（PagedAttention）</strong>：高效管理 KV Cache 内存</li>
+    <li><strong>高速车道（Workers）</strong>：GPU 实际执行模型计算</li>
+    <li><strong>调度引擎（LLM Engine）</strong>：协调一切的大脑</li>
+  </ul>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 820 480" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background -->
+      <rect width="820" height="480" fill="#f8fafc" rx="12"/>
+
+      <!-- Title -->
+      <text x="410" y="30" text-anchor="middle" font-size="16" font-weight="700" fill="#1a1a2e">vLLM 分层架构总览</text>
+
+      <!-- Layer 1: Entrypoints -->
+      <rect x="60" y="50" width="700" height="60" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+      <text x="410" y="72" text-anchor="middle" font-size="13" font-weight="600" fill="#1e40af">入口层 (Entrypoints)</text>
+      <rect x="100" y="80" width="140" height="24" rx="4" fill="#2563eb"/>
+      <text x="170" y="97" text-anchor="middle" font-size="11" fill="white">LLM (离线推理)</text>
+      <rect x="270" y="80" width="160" height="24" rx="4" fill="#2563eb"/>
+      <text x="350" y="97" text-anchor="middle" font-size="11" fill="white">AsyncLLMEngine</text>
+      <rect x="460" y="80" width="180" height="24" rx="4" fill="#2563eb"/>
+      <text x="550" y="97" text-anchor="middle" font-size="11" fill="white">OpenAI API Server</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="112" x2="410" y2="134" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- Layer 2: LLMEngine -->
+      <rect x="60" y="138" width="700" height="70" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="410" y="160" text-anchor="middle" font-size="13" font-weight="600" fill="#5b21b6">引擎核心 (LLMEngine)</text>
+      <rect x="140" y="168" width="120" height="28" rx="4" fill="#7c3aed"/>
+      <text x="200" y="186" text-anchor="middle" font-size="11" fill="white">请求管理</text>
+      <rect x="290" y="168" width="120" height="28" rx="4" fill="#7c3aed"/>
+      <text x="350" y="186" text-anchor="middle" font-size="11" fill="white">输出处理</text>
+      <rect x="440" y="168" width="120" height="28" rx="4" fill="#7c3aed"/>
+      <text x="500" y="186" text-anchor="middle" font-size="11" fill="white">迭代循环</text>
+      <rect x="590" y="168" width="120" height="28" rx="4" fill="#7c3aed"/>
+      <text x="650" y="186" text-anchor="middle" font-size="11" fill="white">指标监控</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="210" x2="410" y2="232" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- Layer 3: Scheduler + BlockManager -->
+      <rect x="60" y="236" width="340" height="80" rx="8" fill="#fed7aa" stroke="#ea580c" stroke-width="1.5"/>
+      <text x="230" y="258" text-anchor="middle" font-size="13" font-weight="600" fill="#9a3412">调度器 (Scheduler)</text>
+      <rect x="80" y="266" width="85" height="22" rx="4" fill="#ea580c"/>
+      <text x="122" y="281" text-anchor="middle" font-size="10" fill="white">Waiting 队列</text>
+      <rect x="175" y="266" width="85" height="22" rx="4" fill="#ea580c"/>
+      <text x="217" y="281" text-anchor="middle" font-size="10" fill="white">Running 队列</text>
+      <rect x="270" y="266" width="85" height="22" rx="4" fill="#ea580c"/>
+      <text x="312" y="281" text-anchor="middle" font-size="10" fill="white">Swapped 队列</text>
+      <text x="230" y="304" text-anchor="middle" font-size="10" fill="#9a3412">连续批处理 · 抢占调度 · Chunked Prefill</text>
+
+      <rect x="420" y="236" width="340" height="80" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+      <text x="590" y="258" text-anchor="middle" font-size="13" font-weight="600" fill="#065f46">KV Cache 管理器</text>
+      <rect x="440" y="266" width="100" height="22" rx="4" fill="#059669"/>
+      <text x="490" y="281" text-anchor="middle" font-size="10" fill="white">Block Pool</text>
+      <rect x="550" y="266" width="100" height="22" rx="4" fill="#059669"/>
+      <text x="600" y="281" text-anchor="middle" font-size="10" fill="white">Prefix Cache</text>
+      <rect x="660" y="266" width="80" height="22" rx="4" fill="#059669"/>
+      <text x="700" y="281" text-anchor="middle" font-size="10" fill="white">引用计数</text>
+      <text x="590" y="304" text-anchor="middle" font-size="10" fill="#065f46">PagedAttention · 固定大小块 · 按需分配</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="318" x2="410" y2="340" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- Layer 4: Executor -->
+      <rect x="60" y="344" width="700" height="56" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <text x="410" y="366" text-anchor="middle" font-size="13" font-weight="600" fill="#92400e">执行器 (Executor)</text>
+      <rect x="120" y="372" width="130" height="22" rx="4" fill="#d97706"/>
+      <text x="185" y="387" text-anchor="middle" font-size="10" fill="white">UniProcExecutor</text>
+      <rect x="280" y="372" width="140" height="22" rx="4" fill="#d97706"/>
+      <text x="350" y="387" text-anchor="middle" font-size="10" fill="white">MultiprocExecutor</text>
+      <rect x="450" y="372" width="130" height="22" rx="4" fill="#d97706"/>
+      <text x="515" y="387" text-anchor="middle" font-size="10" fill="white">RayGPUExecutor</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="402" x2="410" y2="418" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- Layer 5: Workers -->
+      <rect x="60" y="422" width="700" height="48" rx="8" fill="#fce7f3" stroke="#be185d" stroke-width="1.5"/>
+      <text x="410" y="440" text-anchor="middle" font-size="12" font-weight="600" fill="#831843">Worker (GPU) → ModelRunner → CUDA/HIP Kernels</text>
+      <text x="410" y="460" text-anchor="middle" font-size="10" fill="#831843">模型加载 · 前向传播 · KV Cache 读写 · 采样 · CUDA Graph</text>
+
+      <!-- Arrow marker -->
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="svg-caption">图 2-1：vLLM 五层架构总览，从上到下依次为入口层、引擎核心、调度与内存管理、执行器、底层 Worker</div>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">设计哲学</div>
+    vLLM 的核心设计目标是：<strong>让 GPU 始终处于高负载状态，绝不浪费一个计算周期</strong>。所有组件都围绕这一目标协作——调度器确保 batch 永远饱满，PagedAttention 确保显存零浪费，执行引擎确保计算高效。
+  </div>
+</section>
+
+<!-- ======================== 3. FOUNDATION ======================== -->
+<section id="foundation">
+  <h2 class="section-title"><span class="num">3</span>前置基础：Transformer 架构与 LLM 推理两阶段</h2>
+
+  <p>在深入 vLLM 的 PagedAttention、调度器等核心组件之前，我们需要先理解两个底层概念：<strong>Transformer 的自注意力机制</strong>（Q/K/V 从何而来）和 <strong>LLM 推理的两个阶段</strong>（Prefill 与 Decode）。它们是理解 vLLM 一切优化策略的地基。</p>
+
+  <h3>3.1 Transformer decoder-only 架构</h3>
+
+  <p>现代 LLM（GPT / LLaMA / Qwen 等）均采用 <strong>decoder-only Transformer</strong> 结构。数据流为：输入 tokens → 词嵌入 → N 层 Transformer Block 堆叠 → 输出下一个 token 的概率分布。</p>
+
+  <p>每一层 Transformer Block 内部包含两个子模块：</p>
+  <ul>
+    <li><strong>Masked Self-Attention</strong>：序列中每个 token「看」其他 token，建模词与词之间的关系。Q、K、V 的计算就发生在这里，它是 KV Cache 产生的源头。</li>
+    <li><strong>Feed-Forward Network (FFN)</strong>：对每个位置独立做非线性变换，是模型参数量大头（通常 3× hidden_dim，使用 SwiGLU 门控激活）。</li>
+  </ul>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 680 520" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect width="680" height="520" fill="#f8fafc" rx="12"/>
+      <text x="340" y="30" text-anchor="middle" font-size="15" font-weight="700" fill="#1a1a2e">Transformer decoder-only 架构</text>
+      <text x="340" y="48" text-anchor="middle" font-size="12" fill="#555">GPT / LLaMA / Qwen 等现代 LLM 均采用此结构</text>
+
+      <defs>
+        <marker id="fa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Input tokens -->
+      <rect x="80" y="70" width="48" height="36" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="104" y="88" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">"Hello"</text>
+      <rect x="132" y="70" width="48" height="36" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="156" y="88" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">"world"</text>
+      <rect x="184" y="70" width="48" height="36" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="208" y="88" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">"!"</text>
+      <text x="240" y="88" dominant-baseline="central" font-size="12" fill="#555">← 输入 tokens</text>
+
+      <line x1="156" y1="106" x2="156" y2="130" stroke="#888780" stroke-width="1.5" marker-end="url(#fa)"/>
+
+      <rect x="80" y="130" width="200" height="36" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.5"/>
+      <text x="180" y="148" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">Token embedding + 位置编码</text>
+      <text x="300" y="148" dominant-baseline="central" font-size="12" fill="#555">将 token 映射为向量</text>
+
+      <line x1="180" y1="166" x2="180" y2="190" stroke="#888780" stroke-width="1.5" marker-end="url(#fa)"/>
+
+      <!-- N x Block container -->
+      <rect x="60" y="190" width="240" height="200" rx="16" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.5" stroke-dasharray="4 3"/>
+      <text x="180" y="208" text-anchor="middle" font-size="12" font-style="italic" fill="#555">× N 层 (重复堆叠)</text>
+
+      <rect x="80" y="218" width="200" height="44" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="180" y="234" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">Masked Self-Attention</text>
+      <text x="180" y="250" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#555">序列内部建模关系</text>
+
+      <line x1="180" y1="262" x2="180" y2="276" stroke="#888780" stroke-width="1.5" marker-end="url(#fa)"/>
+      <text x="200" y="271" dominant-baseline="central" font-size="11" fill="#888">Add &amp; Norm</text>
+
+      <rect x="80" y="276" width="200" height="44" rx="8" fill="#fed7aa" stroke="#ea580c" stroke-width="0.5"/>
+      <text x="180" y="292" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">Feed-Forward Network</text>
+      <text x="180" y="308" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#555">两层 MLP + 激活函数</text>
+
+      <line x1="180" y1="320" x2="180" y2="334" stroke="#888780" stroke-width="1.5" marker-end="url(#fa)"/>
+      <text x="200" y="329" dominant-baseline="central" font-size="11" fill="#888">Add &amp; Norm</text>
+
+      <rect x="80" y="334" width="200" height="36" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="0.5"/>
+      <text x="180" y="352" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">Layer Norm</text>
+
+      <line x1="180" y1="370" x2="180" y2="394" stroke="#888780" stroke-width="1.5" marker-end="url(#fa)"/>
+
+      <rect x="80" y="394" width="200" height="44" rx="8" fill="#fce7f3" stroke="#be185d" stroke-width="0.5"/>
+      <text x="180" y="410" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">Linear + Softmax</text>
+      <text x="180" y="426" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#555">输出词表概率分布</text>
+
+      <line x1="180" y1="438" x2="180" y2="462" stroke="#888780" stroke-width="1.5" marker-end="url(#fa)"/>
+
+      <rect x="110" y="462" width="140" height="36" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="180" y="480" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">下一个 token 概率</text>
+
+      <!-- Right annotations -->
+      <line x1="300" y1="240" x2="380" y2="240" stroke="#059669" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="388" y="235" dominant-baseline="central" font-size="13" font-weight="500" fill="#059669">核心重点</text>
+      <text x="388" y="252" dominant-baseline="central" font-size="12" fill="#065f46">Q、K、V 计算发生在这里</text>
+      <text x="388" y="268" dominant-baseline="central" font-size="12" fill="#065f46">是 KV Cache 产生的源头</text>
+
+      <line x1="300" y1="298" x2="380" y2="298" stroke="#ea580c" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="388" y="293" dominant-baseline="central" font-size="13" font-weight="500" fill="#9a3412">FFN 占参数量大头</text>
+      <text x="388" y="310" dominant-baseline="central" font-size="12" fill="#92400e">通常 3×hidden_dim</text>
+      <text x="388" y="326" dominant-baseline="central" font-size="12" fill="#92400e">(SwiGLU 门控激活)</text>
+
+      <line x1="300" y1="416" x2="380" y2="416" stroke="#be185d" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="388" y="411" dominant-baseline="central" font-size="13" font-weight="500" fill="#831843">输出层</text>
+      <text x="388" y="428" dominant-baseline="central" font-size="12" fill="#9d174d">logits → softmax → 采样</text>
+      <text x="388" y="444" dominant-baseline="central" font-size="12" fill="#9d174d">产生下一个 token</text>
+    </svg>
+    <div class="svg-caption">图 3-1：Transformer decoder-only 架构，数据从输入 tokens 流经 N 层 Block 到输出概率分布</div>
+  </div>
+
+  <h3>3.2 自注意力机制：Q/K/V 三矩阵</h3>
+
+  <p>在 Self-Attention 内部，每个 token 的 embedding 分别乘以三个不同的权重矩阵（W_Q、W_K、W_V），产生三种角色不同的向量：</p>
+
+  <table>
+    <thead>
+      <tr><th>矩阵</th><th>角色</th><th>直觉类比</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Q (Query)</strong></td><td>「我在找什么」</td><td>搜索关键词</td></tr>
+      <tr><td><strong>K (Key)</strong></td><td>「我的标签是什么」</td><td>书架上的分类标签</td></tr>
+      <tr><td><strong>V (Value)</strong></td><td>「我的实际内容」</td><td>书的具体内容</td></tr>
+    </tbody>
+  </table>
+
+  <p>计算流程分为三步：Q 与 K 做点积得到<strong>注意力分数</strong>（衡量 token 间的关联强度），经缩放和 softmax 归一化后，再与 V 加权求和得到<strong>注意力输出</strong>。</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 680 560" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect width="680" height="560" fill="#f8fafc" rx="12"/>
+      <text x="340" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1a1a2e">自注意力机制：Q/K/V 计算全流程</text>
+
+      <defs>
+        <marker id="fb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Input -->
+      <rect x="40" y="56" width="56" height="40" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="68" y="76" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">x₁</text>
+      <rect x="100" y="56" width="56" height="40" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="128" y="76" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">x₂</text>
+      <rect x="160" y="56" width="56" height="40" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="188" y="76" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">x₃</text>
+      <text x="232" y="76" dominant-baseline="central" font-size="12" fill="#555">← 输入向量 (d_model 维)</text>
+
+      <!-- Projections -->
+      <line x1="68" y1="96" x2="68" y2="120" stroke="#059669" stroke-width="1.5" marker-end="url(#fb)"/>
+      <line x1="128" y1="96" x2="200" y2="120" stroke="#ea580c" stroke-width="1.5" marker-end="url(#fb)"/>
+      <line x1="188" y1="96" x2="332" y2="120" stroke="#be185d" stroke-width="1.5" marker-end="url(#fb)"/>
+      <text x="50" y="112" font-size="11" font-family="monospace" fill="#059669">×W_Q</text>
+      <text x="185" y="112" font-size="11" font-family="monospace" fill="#9a3412">×W_K</text>
+      <text x="320" y="112" font-size="11" font-family="monospace" fill="#831843">×W_V</text>
+
+      <!-- Q -->
+      <rect x="40" y="124" width="56" height="40" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="68" y="144" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#065f46">q₁</text>
+      <rect x="100" y="124" width="56" height="40" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="128" y="144" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#065f46">q₂</text>
+      <rect x="160" y="124" width="56" height="40" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="188" y="144" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#065f46">q₃</text>
+      <text x="40" y="178" font-size="13" font-weight="500" fill="#059669">Q (Query)</text>
+      <text x="40" y="194" font-size="12" fill="#065f46">"我在找什么"</text>
+
+      <!-- K -->
+      <rect x="240" y="124" width="56" height="40" rx="6" fill="#fed7aa" stroke="#ea580c" stroke-width="0.5"/>
+      <text x="268" y="144" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#9a3412">k₁</text>
+      <rect x="300" y="124" width="56" height="40" rx="6" fill="#fed7aa" stroke="#ea580c" stroke-width="0.5"/>
+      <text x="328" y="144" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#9a3412">k₂</text>
+      <rect x="360" y="124" width="56" height="40" rx="6" fill="#fed7aa" stroke="#ea580c" stroke-width="0.5"/>
+      <text x="388" y="144" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#9a3412">k₃</text>
+      <text x="240" y="178" font-size="13" font-weight="500" fill="#9a3412">K (Key)</text>
+      <text x="240" y="194" font-size="12" fill="#92400e">"我的标签是什么"</text>
+
+      <!-- V -->
+      <rect x="440" y="124" width="56" height="40" rx="6" fill="#fce7f3" stroke="#be185d" stroke-width="0.5"/>
+      <text x="468" y="144" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#831843">v₁</text>
+      <rect x="500" y="124" width="56" height="40" rx="6" fill="#fce7f3" stroke="#be185d" stroke-width="0.5"/>
+      <text x="528" y="144" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#831843">v₂</text>
+      <rect x="560" y="124" width="56" height="40" rx="6" fill="#fce7f3" stroke="#be185d" stroke-width="0.5"/>
+      <text x="588" y="144" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#831843">v₃</text>
+      <text x="440" y="178" font-size="13" font-weight="500" fill="#831843">V (Value)</text>
+      <text x="440" y="194" font-size="12" fill="#9d174d">"我的实际内容"</text>
+
+      <!-- Q·K^T -->
+      <line x1="188" y1="210" x2="188" y2="232" stroke="#888780" stroke-width="1.5" marker-end="url(#fb)"/>
+      <line x1="328" y1="210" x2="260" y2="232" stroke="#888780" stroke-width="1.5" marker-end="url(#fb)"/>
+      <text x="200" y="226" font-size="11" font-family="monospace" fill="#5b21b6">Q · K^T</text>
+
+      <rect x="100" y="234" width="240" height="44" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.5"/>
+      <text x="220" y="250" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">注意力分数矩阵 (Score)</text>
+      <text x="220" y="266" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#555">每对 token 之间的相似度</text>
+
+      <line x1="340" y1="256" x2="380" y2="256" stroke="#7c3aed" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="388" y="246" dominant-baseline="central" font-size="12" fill="#5b21b6">q₁·k₁: token1 对自己的注意力</text>
+      <text x="388" y="262" dominant-baseline="central" font-size="12" fill="#5b21b6">q₁·k₂: token1 对 token2 的注意力</text>
+      <text x="388" y="278" dominant-baseline="central" font-size="12" fill="#5b21b6">值越大 = 关联越强</text>
+
+      <!-- softmax -->
+      <line x1="220" y1="278" x2="220" y2="300" stroke="#888780" stroke-width="1.5" marker-end="url(#fb)"/>
+      <text x="240" y="294" font-size="11" font-family="monospace" fill="#5b21b6">÷√d_k → softmax</text>
+
+      <rect x="100" y="302" width="240" height="40" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.5"/>
+      <text x="220" y="322" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">归一化权重 (每行求和=1)</text>
+
+      <!-- ×V -->
+      <line x1="220" y1="342" x2="220" y2="364" stroke="#888780" stroke-width="1.5" marker-end="url(#fb)"/>
+      <line x1="488" y1="210" x2="340" y2="364" stroke="#be185d" stroke-width="1" stroke-dasharray="3 2"/>
+      <text x="340" y="358" font-size="11" font-family="monospace" fill="#831843">× V</text>
+
+      <rect x="100" y="366" width="240" height="44" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="220" y="382" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">注意力输出 (Attention Output)</text>
+      <text x="220" y="398" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#555">加权融合所有 token 的信息</text>
+
+      <!-- Formula -->
+      <rect x="80" y="430" width="520" height="56" rx="12" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.5"/>
+      <text x="100" y="450" dominant-baseline="central" font-size="13" font-weight="500" fill="#1a1a2e">完整公式：</text>
+      <text x="100" y="470" font-size="14" font-family="monospace" fill="#5b21b6">Attention(Q, K, V) = softmax( Q · K^T / √d_k ) · V</text>
+
+      <!-- Key insight -->
+      <rect x="80" y="500" width="520" height="44" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="100" y="516" dominant-baseline="central" font-size="13" font-weight="500" fill="#059669">关键洞察</text>
+      <text x="100" y="534" dominant-baseline="central" font-size="12" fill="#065f46">K 和 V 在生成后续 token 时完全不变 → 可以缓存 → 这就是 KV Cache 的理论基础</text>
+    </svg>
+    <div class="svg-caption">图 3-2：Q/K/V 计算全流程——输入向量经三个权重矩阵投影后，Q·K^T 得到注意力分数，加权 V 得到输出</div>
+  </div>
+
+  <div class="callout tip">
+    <div class="callout-title">最关键的一点</div>
+    一旦某个 token 被处理过，它的 K 和 V 向量就不再改变。后续 token 只需要拿自己的 Q 去和这些已存的 K 做点积——这是 KV Cache 能省掉重复计算的理论基础。理解了这一点，就能自然地进入 LLM 推理的两阶段。
+  </div>
+
+  <h3>3.3 LLM 推理两阶段：Prefill 与 Decode</h3>
+
+  <p>LLM 推理被拆分为两个计算特征截然不同的阶段：<strong>Prefill（预填充）</strong>和 <strong>Decode（解码）</strong>。</p>
+
+  <p><strong>Prefill 阶段</strong>：一次性并行处理整个输入 prompt，为每个 token 计算 K、V 并写入 KV Cache，产出第一个输出 token。这是 <strong>compute-bound</strong>（计算密集型）阶段——大矩阵乘法，GPU 利用率高（70%-90%），只执行一次。</p>
+
+  <p><strong>Decode 阶段</strong>：每次只输入 1 个新 token（上一步的输出），只计算新 token 的 Q/K/V，与 KV Cache 中已有的 K 做注意力，追加新 K/V 到缓存，产出下一个 token。这是 <strong>memory-bound</strong>（内存带宽密集型）阶段——极小矩阵乘法，GPU 利用率低（1%-10%），循环执行 N 次（N = 输出 token 数），是主要耗时来源。</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 680 640" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect width="680" height="640" fill="#f8fafc" rx="12"/>
+      <text x="340" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1a1a2e">LLM 推理的两个核心阶段</text>
+
+      <defs>
+        <marker id="fc" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- PREFILL -->
+      <rect x="30" y="50" width="300" height="570" rx="16" fill="#dbeafe" stroke="#85b7eb" stroke-width="0.5"/>
+      <text x="180" y="76" text-anchor="middle" font-size="15" font-weight="500" fill="#185FA5">Prefill 阶段（预填充）</text>
+      <text x="180" y="94" text-anchor="middle" font-size="12" fill="#0C447C">一次性处理整个输入 prompt</text>
+
+      <text x="180" y="116" text-anchor="middle" font-size="12" fill="#0C447C">Step 1: 并行处理所有输入 token</text>
+      <rect x="50" y="126" width="36" height="32" rx="5" fill="#B5D4F4" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="68" y="142" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">t₁</text>
+      <rect x="90" y="126" width="36" height="32" rx="5" fill="#B5D4F4" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="108" y="142" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">t₂</text>
+      <rect x="130" y="126" width="36" height="32" rx="5" fill="#B5D4F4" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="148" y="142" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">t₃</text>
+      <rect x="170" y="126" width="36" height="32" rx="5" fill="#B5D4F4" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="188" y="142" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">t₄</text>
+      <rect x="210" y="126" width="36" height="32" rx="5" fill="#B5D4F4" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="228" y="142" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">t₅</text>
+      <rect x="250" y="126" width="36" height="32" rx="5" fill="#B5D4F4" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="268" y="142" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#1e40af">t₆</text>
+      <text x="180" y="172" text-anchor="middle" font-size="12" fill="#0C447C">↑ 所有 token 同时进入模型</text>
+
+      <line x1="180" y1="180" x2="180" y2="196" stroke="#2563eb" stroke-width="1.5" marker-end="url(#fc)"/>
+      <text x="180" y="210" text-anchor="middle" font-size="12" fill="#0C447C">Step 2: 计算 K、V 并填充缓存</text>
+      <rect x="50" y="220" width="260" height="40" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.5"/>
+      <text x="180" y="240" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">为每个 token 生成 K、V 向量</text>
+
+      <line x1="180" y1="260" x2="180" y2="276" stroke="#2563eb" stroke-width="1.5" marker-end="url(#fc)"/>
+      <text x="180" y="290" text-anchor="middle" font-size="12" fill="#0C447C">Step 3: 写入 KV Cache</text>
+      <rect x="50" y="298" width="260" height="56" rx="8" fill="#fed7aa" stroke="#ea580c" stroke-width="0.5"/>
+      <text x="180" y="316" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#9a3412">KV Cache（填充后）</text>
+      <text x="180" y="336" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#92400e">[k₁,k₂,k₃,k₄,k₅,k₆] [v₁,v₂,v₃,v₄,v₅,v₆]</text>
+
+      <line x1="180" y1="354" x2="180" y2="370" stroke="#2563eb" stroke-width="1.5" marker-end="url(#fc)"/>
+      <text x="180" y="384" text-anchor="middle" font-size="12" fill="#0C447C">Step 4: 生成第一个输出 token</text>
+      <rect x="120" y="394" width="120" height="36" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="180" y="412" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#04342C">→ token y₁</text>
+
+      <line x1="50" y1="446" x2="310" y2="446" stroke="#85b7eb" stroke-width="0.5"/>
+      <text x="60" y="464" font-size="12" font-weight="500" fill="#0C447C">计算特征：</text>
+      <text x="60" y="482" font-size="11" fill="#0C447C">• 计算密集型 (compute-bound)</text>
+      <text x="60" y="500" font-size="11" fill="#0C447C">• 矩阵乘法规模大，GPU 利用率高</text>
+      <text x="60" y="518" font-size="11" fill="#0C447C">• 并行处理 N 个 token，一次完成</text>
+      <text x="60" y="536" font-size="11" fill="#0C447C">• 产生 KV Cache 供后续使用</text>
+      <text x="60" y="554" font-size="11" fill="#0C447C">• 类比：读完题干，建立上下文</text>
+      <text x="60" y="580" font-size="11" font-weight="500" fill="#0C447C">耗时占比：约 20%-60%</text>
+      <text x="60" y="596" font-size="11" fill="#0C447C">（取决于 prompt 长度和输出长度比）</text>
+
+      <!-- DECODE -->
+      <rect x="350" y="50" width="300" height="570" rx="16" fill="#fce7f3" stroke="#ED93B1" stroke-width="0.5"/>
+      <text x="500" y="76" text-anchor="middle" font-size="15" font-weight="500" fill="#993556">Decode 阶段（解码）</text>
+      <text x="500" y="94" text-anchor="middle" font-size="12" fill="#72243E">逐个 token 自回归生成</text>
+
+      <text x="500" y="116" text-anchor="middle" font-size="12" fill="#72243E">Step 1: 只处理 1 个新 token</text>
+      <rect x="460" y="126" width="80" height="32" rx="5" fill="#F4C0D1" stroke="#be185d" stroke-width="0.5"/>
+      <text x="500" y="142" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#831843">y₁ (上一步的输出)</text>
+      <text x="500" y="172" text-anchor="middle" font-size="12" fill="#72243E">↑ 每次只输入 1 个 token</text>
+
+      <line x1="500" y1="180" x2="500" y2="196" stroke="#be185d" stroke-width="1.5" marker-end="url(#fc)"/>
+      <text x="500" y="210" text-anchor="middle" font-size="12" fill="#72243E">Step 2: 只算新 token 的 Q</text>
+      <rect x="370" y="220" width="260" height="40" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.5"/>
+      <text x="500" y="240" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">仅计算 q_new, k_new, v_new</text>
+
+      <line x1="500" y1="260" x2="500" y2="276" stroke="#be185d" stroke-width="1.5" marker-end="url(#fc)"/>
+      <text x="500" y="290" text-anchor="middle" font-size="12" fill="#72243E">Step 3: 读取已有 KV Cache + 追加</text>
+      <rect x="370" y="298" width="260" height="56" rx="8" fill="#fed7aa" stroke="#ea580c" stroke-width="0.5"/>
+      <text x="500" y="316" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#9a3412">KV Cache（持续追加）</text>
+      <text x="500" y="336" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#92400e">[k₁...k₆, k₇] [v₁...v₆, v₇]</text>
+
+      <line x1="500" y1="354" x2="500" y2="370" stroke="#be185d" stroke-width="1.5" marker-end="url(#fc)"/>
+      <text x="500" y="384" text-anchor="middle" font-size="12" fill="#72243E">Step 4: 生成下一个 token</text>
+      <rect x="440" y="394" width="120" height="36" rx="6" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="500" y="412" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#04342C">→ token y₂</text>
+      <text x="500" y="426" text-anchor="middle" font-size="12" fill="#72243E">↑ 循环重复此过程</text>
+
+      <line x1="370" y1="446" x2="630" y2="446" stroke="#ED93B1" stroke-width="0.5"/>
+      <text x="380" y="464" font-size="12" font-weight="500" fill="#72243E">计算特征：</text>
+      <text x="380" y="482" font-size="11" fill="#72243E">• 内存带宽密集型 (memory-bound)</text>
+      <text x="380" y="500" font-size="11" fill="#72243E">• 矩阵乘法极小，GPU 利用率低</text>
+      <text x="380" y="518" font-size="11" fill="#72243E">• 每次只处理 1 个 token，需 N 次循环</text>
+      <text x="380" y="536" font-size="11" fill="#72243E">• 依赖 KV Cache 避免重复计算</text>
+      <text x="380" y="554" font-size="11" fill="#72243E">• 类比：逐字写答案，每字都看题干</text>
+      <text x="380" y="580" font-size="11" font-weight="500" fill="#72243E">耗时占比：约 40%-80%</text>
+      <text x="380" y="596" font-size="11" fill="#72243E">（输出越长，占比越高）</text>
+    </svg>
+    <div class="svg-caption">图 3-3：Prefill（左）并行处理所有输入 token 并填充 KV Cache；Decode（右）逐 token 生成，每步只算 1 个 token</div>
+  </div>
+
+  <h3>3.4 两阶段的衔接：KV Cache 是桥梁</h3>
+
+  <p>两个阶段并非孤立——<strong>KV Cache 是连接它们的桥梁</strong>。Prefill 中 KV Cache 被创建，Decode 中被读取和追加，贯穿整个推理过程。这个数据结构只增不减，随着输出变长持续占用显存。</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 680 580" width="100%" xmlns="http://www.w3.org/2000/svg">
+      <rect width="680" height="580" fill="#f8fafc" rx="12"/>
+      <text x="340" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1a1a2e">LLM 推理完整生命周期</text>
+      <text x="340" y="46" text-anchor="middle" font-size="12" fill="#555">从输入 prompt 到逐 token 生成输出的全过程</text>
+
+      <defs>
+        <marker id="fd" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <!-- Phase labels -->
+      <rect x="30" y="64" width="300" height="24" rx="4" fill="#2563eb"/>
+      <text x="180" y="76" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="500" fill="white">Prefill 阶段</text>
+      <rect x="350" y="64" width="300" height="24" rx="4" fill="#be185d"/>
+      <text x="500" y="76" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="500" fill="white">Decode 阶段（自回归循环）</text>
+
+      <!-- PREFILL FLOW -->
+      <rect x="50" y="104" width="260" height="40" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="180" y="124" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">输入 prompt: "The cat sat on"</text>
+
+      <line x1="180" y1="144" x2="180" y2="162" stroke="#2563eb" stroke-width="1.5" marker-end="url(#fd)"/>
+
+      <rect x="50" y="164" width="260" height="56" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.5"/>
+      <text x="180" y="184" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">并行计算所有 token</text>
+      <text x="180" y="202" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#555">embedding → attention → FFN ×N层</text>
+
+      <line x1="180" y1="220" x2="180" y2="238" stroke="#2563eb" stroke-width="1.5" marker-end="url(#fd)"/>
+
+      <rect x="50" y="240" width="260" height="56" rx="8" fill="#fed7aa" stroke="#ea580c" stroke-width="0.5"/>
+      <text x="180" y="260" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#9a3412">KV Cache 初始化</text>
+      <text x="180" y="278" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#92400e">[k₁,k₂,k₃,k₄,k₅] [v₁,v₂,v₃,v₄,v₅]</text>
+
+      <line x1="180" y1="296" x2="180" y2="314" stroke="#2563eb" stroke-width="1.5" marker-end="url(#fd)"/>
+
+      <rect x="100" y="316" width="160" height="40" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="180" y="336" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#04342C">→ 输出 "the"</text>
+
+      <!-- Transition -->
+      <path d="M260 336 Q 320 336 350 336" fill="none" stroke="#888780" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#fd)"/>
+      <text x="305" y="326" text-anchor="middle" font-size="12" fill="#555">衔接</text>
+
+      <!-- DECODE FLOW -->
+      <rect x="370" y="104" width="260" height="40" rx="8" fill="#fce7f3" stroke="#be185d" stroke-width="0.5"/>
+      <text x="500" y="124" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">输入新 token: "the"</text>
+
+      <line x1="500" y1="144" x2="500" y2="162" stroke="#be185d" stroke-width="1.5" marker-end="url(#fd)"/>
+
+      <rect x="370" y="164" width="260" height="56" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.5"/>
+      <text x="500" y="184" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">只算 1 个 token 的 Q,K,V</text>
+      <text x="500" y="202" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#555">Q 与缓存中所有 K 做注意力</text>
+
+      <line x1="500" y1="220" x2="500" y2="238" stroke="#be185d" stroke-width="1.5" marker-end="url(#fd)"/>
+
+      <rect x="370" y="240" width="260" height="56" rx="8" fill="#fed7aa" stroke="#ea580c" stroke-width="0.5"/>
+      <text x="500" y="260" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#9a3412">KV Cache 追加</text>
+      <text x="500" y="278" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#92400e">[k₁...k₅,k₆] [v₁...v₅,v₆]</text>
+
+      <line x1="500" y1="296" x2="500" y2="314" stroke="#be185d" stroke-width="1.5" marker-end="url(#fd)"/>
+
+      <rect x="420" y="316" width="160" height="40" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="500" y="336" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#04342C">→ 输出 "mat"</text>
+
+      <!-- Loop -->
+      <path d="M580 336 Q 640 336 640 124 Q 640 104 630 104" fill="none" stroke="#be185d" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#fd)"/>
+      <text x="650" y="220" text-anchor="middle" font-size="12" fill="#72243E" transform="rotate(90 650 220)">重复直到 EOS 或长度上限</text>
+
+      <!-- Bridge -->
+      <rect x="180" y="380" width="320" height="44" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="340" y="396" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#059669">KV Cache = 两阶段的桥梁</text>
+      <text x="340" y="414" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#065f46">Prefill 产出 → Decode 消费并追加 → 每步只增不减</text>
+
+      <!-- Key takeaways -->
+      <rect x="40" y="442" width="600" height="120" rx="12" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.5"/>
+      <text x="60" y="464" dominant-baseline="central" font-size="14" font-weight="500" fill="#1a1a2e">关键要点</text>
+      <text x="60" y="486" dominant-baseline="central" font-size="12" fill="#2563eb">1. Prefill 只执行一次，是"一次性投资"——越长的 prompt，预填充开销越大</text>
+      <text x="60" y="506" dominant-baseline="central" font-size="12" fill="#be185d">2. Decode 循环执行 N 次（N = 输出 token 数），每次只算 1 个 token，是主要耗时来源</text>
+      <text x="60" y="526" dominant-baseline="central" font-size="12" fill="#9a3412">3. KV Cache 在 Prefill 中被创建，在 Decode 中被读取和追加，贯穿整个推理过程</text>
+      <text x="60" y="546" dominant-baseline="central" font-size="12" fill="#059669">4. 正因 Decode 是 memory-bound，才有了连续批处理、PagedAttention 等 vLLM 优化技术的用武之地</text>
+    </svg>
+    <div class="svg-caption">图 3-4：完整推理生命周期——Prefill 产出 KV Cache 和首个 token，Decode 循环消费缓存并逐 token 生成</div>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">从基础到 vLLM：为什么这些知识很重要</div>
+    理解了 Transformer → Q/K/V → Prefill/Decode → KV Cache 这条知识链，就能明白 vLLM 要解决的核心问题：<strong>KV Cache 占显存太大</strong>（→ PagedAttention 分页管理）、<strong>Decode 阶段 GPU 利用率太低</strong>（→ 连续批处理）、<strong>不同请求的 KV Cache 大小不一</strong>（→ 调度器动态分配与抢占）。接下来各节将逐一拆解这些优化机制。
+  </div>
+</section>
+
+<!-- ======================== 4. KV CACHE ======================== -->
+<section id="kv-cache">
+  <h2 class="section-title"><span class="num">4</span>KV Cache 机制：推理的「记忆」</h2>
+
+  <h3>4.1 什么是 KV Cache？</h3>
+
+  <p>要理解 vLLM，首先得理解 <strong>KV Cache</strong>——它是 LLM 推理中最关键的内存结构。</p>
+
+  <p>Transformer 模型使用<strong>自注意力机制（Self-Attention）</strong>计算 token 之间的关系。对于序列中的每个 token，模型会生成三个向量：<strong>Q（Query）</strong>、<strong>K（Key）</strong>和<strong>V（Value）</strong>。注意力分数由 Q 和 K 的点积计算，再用它对 V 加权求和。</p>
+
+  <p>关键洞察是：在自回归生成中，<strong>已生成 token 的 K 和 V 向量不会改变</strong>。当生成第 N 个 token 时，前 N-1 个 token 的 K、V 向量与上一步骤完全相同。如果每步都重新计算它们，会浪费大量算力。</p>
+
+  <p><strong>KV Cache 就是把这些 K、V 向量缓存起来</strong>，避免重复计算。每生成一个新 token，只需计算新 token 的 K、V 并追加到缓存中即可。</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg">
+      <rect width="760" height="280" fill="#f8fafc" rx="12"/>
+      <text x="380" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">KV Cache 工作原理</text>
+
+      <!-- Step 1: Prompt processing -->
+      <text x="180" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#2563eb">Step 1: Prefill（处理输入）</text>
+      <rect x="60" y="66" width="240" height="50" rx="6" fill="#dbeafe" stroke="#2563eb"/>
+      <text x="180" y="84" text-anchor="middle" font-size="11" fill="#1e40af">输入: "The cat sat on"</text>
+      <text x="180" y="102" text-anchor="middle" font-size="10" fill="#1e40af">计算所有 token 的 K, V → 存入 Cache</text>
+
+      <rect x="60" y="126" width="240" height="40" rx="6" fill="#d1fae5" stroke="#059669"/>
+      <text x="180" y="142" text-anchor="middle" font-size="10" fill="#065f46">KV Cache: [K₁V₁, K₂V₂, K₃V₃, K₄V₄]</text>
+      <text x="180" y="158" text-anchor="middle" font-size="10" fill="#065f46">4 个 token 的 KV 向量已缓存</text>
+
+      <!-- Step 2: Generate token 5 -->
+      <text x="540" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="#ea580c">Step 2: Decode（生成 token）</text>
+      <rect x="420" y="66" width="240" height="50" rx="6" fill="#fed7aa" stroke="#ea580c"/>
+      <text x="540" y="84" text-anchor="middle" font-size="11" fill="#9a3412">生成: "the" (token 5)</text>
+      <text x="540" y="102" text-anchor="middle" font-size="10" fill="#9a3412">只需计算 K₅, V₅ → 追加到 Cache</text>
+
+      <rect x="420" y="126" width="240" height="40" rx="6" fill="#d1fae5" stroke="#059669"/>
+      <text x="540" y="142" text-anchor="middle" font-size="10" fill="#065f46">KV Cache: [K₁V₁, K₂V₂, K₃V₃, K₄V₄, K₅V₅]</text>
+      <text x="540" y="158" text-anchor="middle" font-size="10" fill="#065f46">复用前 4 个，仅新增 1 个</text>
+
+      <!-- Arrow between steps -->
+      <line x1="300" y1="146" x2="420" y2="146" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#arrow2)"/>
+
+      <!-- Memory growth -->
+      <text x="380" y="200" text-anchor="middle" font-size="12" font-weight="600" fill="#1a1a2e">KV Cache 内存随序列长度线性增长</text>
+      <rect x="80" y="212" width="600" height="24" rx="4" fill="#e2e8f0"/>
+      <rect x="80" y="212" width="120" height="24" rx="4" fill="#059669" opacity="0.7"/>
+      <text x="140" y="228" text-anchor="middle" font-size="10" fill="white">4 tokens</text>
+      <rect x="200" y="212" width="30" height="24" fill="#ea580c" opacity="0.7"/>
+      <rect x="230" y="212" width="30" height="24" fill="#ea580c" opacity="0.5"/>
+      <rect x="260" y="212" width="30" height="24" fill="#ea580c" opacity="0.3"/>
+      <text x="560" y="228" text-anchor="middle" font-size="10" fill="#555">→ 序列越长，Cache 越大</text>
+
+      <text x="380" y="262" text-anchor="middle" font-size="10" fill="#555">每层 Transformer 都有独立的 KV Cache，层数 × 序列长度 × 隐藏维度 = 巨大的显存开销</text>
+
+      <defs>
+        <marker id="arrow2" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="svg-caption">图 4-1：KV Cache 在 Prefill 阶段初始化，在 Decode 阶段逐步增长</div>
+  </div>
+
+  <h3>4.2 KV Cache 的显存开销有多大？</h3>
+
+  <p>KV Cache 的大小取决于模型结构和序列长度，计算公式为：</p>
+
+  <pre><code>KV Cache 大小 = 2 × num_layers × seq_len × num_kv_heads × head_size × dtype_bytes</code></pre>
+
+  <p>以 <strong>LLaMA-70B</strong>（80 层、8 个 KV head、head_size=128、bf16）处理 4K 上下文为例：</p>
+
+  <pre><code>2 × 80 × 4096 × 8 × 128 × 2 bytes ≈ 40 GB</code></pre>
+
+  <p>这意味着仅 KV Cache 就需要 40GB 显存——而模型权重本身约 140GB（bf16）。在多请求并发场景下，KV Cache 的总占用会迅速膨胀，成为推理瓶颈。</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 660 200" xmlns="http://www.w3.org/2000/svg">
+      <rect width="660" height="200" fill="#f8fafc" rx="12"/>
+      <text x="330" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">GPU 显存分配（LLaMA-70B, A100 80GB 示意）</text>
+
+      <!-- Memory bar -->
+      <rect x="60" y="50" width="540" height="50" rx="6" fill="#e2e8f0" stroke="#cbd5e1"/>
+      <rect x="60" y="50" width="340" height="50" rx="6" fill="#94a3b8"/>
+      <text x="230" y="80" text-anchor="middle" font-size="12" fill="white" font-weight="600">模型权重 ~63%</text>
+      <rect x="400" y="50" width="170" height="50" fill="#dc2626" opacity="0.8"/>
+      <text x="485" y="80" text-anchor="middle" font-size="12" fill="white" font-weight="600">KV Cache ~30%</text>
+      <rect x="570" y="50" width="30" height="50" rx="0 6 6 0" fill="#fbbf24"/>
+      <text x="585" y="80" text-anchor="middle" font-size="9" fill="#92400e">激活</text>
+
+      <!-- Annotation -->
+      <text x="330" y="128" text-anchor="middle" font-size="12" fill="#555">KV Cache 占据约 30% 显存，且随并发数线性增长</text>
+
+      <!-- Growth chart -->
+      <line x1="100" y1="190" x2="560" y2="190" stroke="#cbd5e1" stroke-width="1"/>
+      <line x1="100" y1="150" x2="100" y2="190" stroke="#cbd5e1" stroke-width="1"/>
+      <text x="80" y="172" text-anchor="middle" font-size="9" fill="#555">显存</text>
+      <polyline points="100,185 180,178 260,168 340,155 420,148" fill="none" stroke="#dc2626" stroke-width="2"/>
+      <circle cx="100" cy="185" r="3" fill="#dc2626"/>
+      <circle cx="180" cy="178" r="3" fill="#dc2626"/>
+      <circle cx="260" cy="168" r="3" fill="#dc2626"/>
+      <circle cx="340" cy="155" r="3" fill="#dc2626"/>
+      <circle cx="420" cy="148" r="3" fill="#dc2626"/>
+      <text x="440" y="152" font-size="9" fill="#dc2626">并发请求越多 → KV Cache 越大</text>
+    </svg>
+    <div class="svg-caption">图 4-2：GPU 显存分配比例，KV Cache 是仅次于模型权重的第二大内存消耗者</div>
+  </div>
+
+  <div class="callout tip">
+    <div class="callout-title">关键认知</div>
+    KV Cache 是 vLLM 一切优化的出发点。PagedAttention 解决的是「KV Cache 怎么存」，调度器解决的是「KV Cache 给谁用」，执行引擎解决的是「KV Cache 怎么算」。理解了 KV Cache，就理解了 vLLM 的一半。
+  </div>
+</section>
+
+<!-- ======================== 5. PAGED ATTENTION ======================== -->
+<section id="paged-attention">
+  <h2 class="section-title"><span class="num">5</span>PagedAttention：内存管理的革命</h2>
+
+  <h3>5.1 传统方法的内存浪费</h3>
+
+  <p>传统推理框架（如 HuggingFace Transformers）为每个请求<strong>预分配一段连续的、按最大长度计算的内存</strong>。这就像酒店管理——不管你住几晚，都得订一整个房间。</p>
+
+  <p>问题在于，请求长度千差万别。假设 batch 中有 3 个请求，实际长度分别为 100、300、500，但都按 500 预分配，实际利用率仅 60%。更糟的是，<strong>内部碎片</strong>（预留未用空间）和<strong>外部碎片</strong>（请求释放后留下的不连续空洞）会进一步蚕食可用内存。</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg">
+      <rect width="760" height="260" fill="#f8fafc" rx="12"/>
+      <text x="380" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">传统内存分配 vs PagedAttention</text>
+
+      <!-- Traditional -->
+      <text x="180" y="54" text-anchor="middle" font-size="12" font-weight="600" fill="#dc2626">传统方法：连续预分配</text>
+      <!-- Seq A -->
+      <rect x="40" y="64" width="280" height="28" rx="4" fill="#fecaca" stroke="#dc2626"/>
+      <rect x="40" y="64" width="56" height="28" rx="4" fill="#dc2626"/>
+      <text x="68" y="82" text-anchor="middle" font-size="10" fill="white">100</text>
+      <text x="180" y="82" text-anchor="middle" font-size="9" fill="#dc2626">浪费 400</text>
+      <text x="35" y="58" font-size="9" fill="#555">Seq A (实际100 / 预留500)</text>
+
+      <!-- Seq B -->
+      <rect x="40" y="100" width="280" height="28" rx="4" fill="#fecaca" stroke="#dc2626"/>
+      <rect x="40" y="100" width="168" height="28" rx="4" fill="#dc2626"/>
+      <text x="124" y="118" text-anchor="middle" font-size="10" fill="white">300</text>
+      <text x="246" y="118" text-anchor="middle" font-size="9" fill="#dc2626">浪费 200</text>
+      <text x="35" y="94" font-size="9" fill="#555">Seq B (实际300 / 预留500)</text>
+
+      <!-- Seq C -->
+      <rect x="40" y="136" width="280" height="28" rx="4" fill="#fecaca" stroke="#dc2626"/>
+      <rect x="40" y="136" width="280" height="28" rx="4" fill="#dc2626"/>
+      <text x="180" y="154" text-anchor="middle" font-size="10" fill="white">500</text>
+      <text x="35" y="130" font-size="9" fill="#555">Seq C (实际500 / 预留500)</text>
+
+      <text x="180" y="186" text-anchor="middle" font-size="11" fill="#dc2626">利用率: (100+300+500)/(500×3) = 60%</text>
+      <text x="180" y="206" text-anchor="middle" font-size="10" fill="#555">碎片 + 预留 = 40% 显存浪费</text>
+
+      <!-- Divider -->
+      <line x1="360" y1="50" x2="360" y2="220" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4,3"/>
+
+      <!-- PagedAttention -->
+      <text x="560" y="54" text-anchor="middle" font-size="12" font-weight="600" fill="#059669">PagedAttention：按需分块</text>
+
+      <!-- Block pool -->
+      <text x="560" y="76" text-anchor="middle" font-size="10" fill="#065f46">物理块池 (每块 16 tokens)</text>
+      <g font-size="9" fill="white">
+        <rect x="400" y="84" width="40" height="22" rx="3" fill="#059669"/><text x="420" y="99" text-anchor="middle">A1</text>
+        <rect x="444" y="84" width="40" height="22" rx="3" fill="#059669"/><text x="464" y="99" text-anchor="middle">A2</text>
+        <rect x="488" y="84" width="40" height="22" rx="3" fill="#059669"/><text x="468" y="99" text-anchor="middle"></text>
+        <rect x="488" y="84" width="40" height="22" rx="3" fill="#2563eb"/><text x="508" y="99" text-anchor="middle">B1</text>
+        <rect x="532" y="84" width="40" height="22" rx="3" fill="#2563eb"/><text x="552" y="99" text-anchor="middle">B2</text>
+        <rect x="576" y="84" width="40" height="22" rx="3" fill="#2563eb"/><text x="596" y="99" text-anchor="middle">B3</text>
+        <rect x="620" y="84" width="40" height="22" rx="3" fill="#7c3aed"/><text x="640" y="99" text-anchor="middle">C1</text>
+        <rect x="664" y="84" width="40" height="22" rx="3" fill="#7c3aed"/><text x="684" y="99" text-anchor="middle">C2</text>
+
+        <rect x="400" y="112" width="40" height="22" rx="3" fill="#7c3aed"/><text x="420" y="127" text-anchor="middle">C3</text>
+        <rect x="444" y="112" width="40" height="22" rx="3" fill="#7c3aed"/><text x="464" y="127" text-anchor="middle">C4</text>
+        <rect x="488" y="112" width="40" height="22" rx="3" fill="#94a3b8"/><text x="508" y="127" text-anchor="middle">空闲</text>
+        <rect x="532" y="112" width="40" height="22" rx="3" fill="#94a3b8"/><text x="552" y="127" text-anchor="middle">空闲</text>
+        <rect x="576" y="112" width="40" height="22" rx="3" fill="#94a3b8"/><text x="596" y="127" text-anchor="middle">空闲</text>
+        <rect x="620" y="112" width="40" height="22" rx="3" fill="#94a3b8"/><text x="640" y="127" text-anchor="middle">空闲</text>
+        <rect x="664" y="112" width="40" height="22" rx="3" fill="#94a3b8"/><text x="684" y="127" text-anchor="middle">空闲</text>
+      </g>
+
+      <!-- Block tables -->
+      <text x="560" y="156" text-anchor="middle" font-size="10" fill="#065f46">块表 (Block Table) — 逻辑→物理映射</text>
+      <text x="400" y="174" font-size="9" fill="#059669">Seq A: [块0→P3, 块1→P7]</text>
+      <text x="400" y="190" font-size="9" fill="#2563eb">Seq B: [块0→P4, 块1→P5, 块2→P6]</text>
+      <text x="400" y="206" font-size="9" fill="#7c3aed">Seq C: [块0→P0, 块1→P1, 块2→P8, 块3→P9]</text>
+
+      <text x="560" y="232" text-anchor="middle" font-size="11" fill="#059669">利用率: ~96%（仅最后一个块可能有微量内部碎片）</text>
+      <text x="560" y="250" text-anchor="middle" font-size="10" fill="#555">非连续存储 · 零外部碎片 · 按需分配</text>
+    </svg>
+    <div class="svg-caption">图 5-1：传统连续分配（左）造成 40% 浪费，PagedAttention（右）通过分块映射实现 96%+ 利用率</div>
+  </div>
+
+  <h3>5.2 操作系统分页类比</h3>
+
+  <p>PagedAttention 的灵感直接来自操作系统的<strong>虚拟内存分页机制</strong>。如果你学过 OS 课程，这个类比会让你豁然开朗：</p>
+
+  <table>
+    <thead>
+      <tr><th>OS 虚拟内存</th><th>vLLM PagedAttention</th><th>对应关系</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>进程的虚拟地址空间</td><td>一个请求的逻辑 KV Cache 序列</td><td>请求看到的「连续」KV Cache</td></tr>
+      <tr><td>物理页 (Page)</td><td>KV Cache 块 (Block，默认 16 tokens)</td><td>固定大小的物理存储单元</td></tr>
+      <tr><td>页表 (Page Table)</td><td>块表 (Block Table)</td><td>逻辑块号 → 物理块号的映射</td></tr>
+      <tr><td>物理内存</td><td>GPU 显存中的 KV Cache 池</td><td>所有请求共享的存储池</td></tr>
+      <tr><td>缺页中断</td><td>块分配不足 → 触发抢占</td><td>内存不够时的处理机制</td></tr>
+      <tr><td>共享内存</td><td>Prefix Caching（前缀共享）</td><td>多个请求共享相同前缀的 KV 块</td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.3 PagedAttention 的工作流程</h3>
+
+  <ol>
+    <li><strong>初始化</strong>：系统启动时，根据 GPU 可用显存计算出能容纳多少个 KV Cache 块（<code>num_gpu_blocks</code>），预分配整个块池</li>
+    <li><strong>请求到达</strong>：新请求进入 Prefill 阶段，调度器从块池中为其分配足够的块</li>
+    <li><strong>块表映射</strong>：为该请求创建块表，记录逻辑块号到物理块号的映射关系</li>
+    <li><strong>注意力计算</strong>：CUDA 内核通过块表查找物理块位置，在非连续的物理块上计算注意力</li>
+    <li><strong>动态增长</strong>：每生成 16 个 token（一个块的大小），分配一个新块并更新块表</li>
+    <li><strong>块释放</strong>：请求完成后，其所有块归还到空闲池，立即可被其他请求复用</li>
+  </ol>
+
+  <h3>5.4 前缀缓存（Prefix Caching）</h3>
+
+  <p>在实际应用中，很多请求共享相同的前缀——比如系统提示词（system prompt）、few-shot 示例等。PagedAttention 允许这些请求<strong>共享同一组物理块</strong>，通过引用计数管理。</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+      <rect width="720" height="240" fill="#f8fafc" rx="12"/>
+      <text x="360" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">Prefix Caching：共享前缀的 KV Cache 块</text>
+
+      <!-- Shared prefix -->
+      <rect x="40" y="46" width="640" height="30" rx="6" fill="#dbeafe" stroke="#2563eb"/>
+      <text x="360" y="65" text-anchor="middle" font-size="11" fill="#1e40af">System Prompt: "You are a helpful assistant..." (共享前缀, 128 tokens)</text>
+
+      <!-- Block pool -->
+      <text x="360" y="96" text-anchor="middle" font-size="11" fill="#555">物理块池</text>
+
+      <!-- Shared blocks -->
+      <g font-size="9" fill="white">
+        <rect x="40" y="106" width="60" height="26" rx="4" fill="#2563eb"/><text x="70" y="123" text-anchor="middle">Block 0</text>
+        <rect x="106" y="106" width="60" height="26" rx="4" fill="#2563eb"/><text x="136" y="123" text-anchor="middle">Block 1</text>
+        <rect x="172" y="106" width="60" height="26" rx="4" fill="#2563eb"/><text x="202" y="123" text-anchor="middle">Block 2</text>
+        <rect x="238" y="106" width="60" height="26" rx="4" fill="#2563eb"/><text x="268" y="123" text-anchor="middle">Block 3</text>
+        <rect x="304" y="106" width="60" height="26" rx="4" fill="#2563eb"/><text x="334" y="123" text-anchor="middle">Block 4</text>
+        <rect x="370" y="106" width="60" height="26" rx="4" fill="#2563eb"/><text x="400" y="123" text-anchor="middle">Block 5</text>
+        <rect x="436" y="106" width="60" height="26" rx="4" fill="#2563eb"/><text x="466" y="123" text-anchor="middle">Block 6</text>
+        <rect x="502" y="106" width="60" height="26" rx="4" fill="#2563eb"/><text x="532" y="123" text-anchor="middle">Block 7</text>
+      </g>
+      <text x="600" y="123" font-size="10" fill="#2563eb">↑ 共享块 (ref_count=2)</text>
+
+      <!-- Request A -->
+      <rect x="40" y="148" width="320" height="28" rx="4" fill="#d1fae5" stroke="#059669"/>
+      <text x="200" y="166" text-anchor="middle" font-size="10" fill="#065f46">请求 A: [共享块 0-7] + [私有块 8, 9]</text>
+
+      <!-- Request B -->
+      <rect x="380" y="148" width="300" height="28" rx="4" fill="#fed7aa" stroke="#ea580c"/>
+      <text x="530" y="166" text-anchor="middle" font-size="10" fill="#9a3412">请求 B: [共享块 0-7] + [私有块 10]</text>
+
+      <!-- Benefit -->
+      <rect x="40" y="190" width="640" height="38" rx="6" fill="#f0fdf4" stroke="#059669"/>
+      <text x="360" y="207" text-anchor="middle" font-size="11" fill="#065f46">两个请求共享 8 个块 = 节省 128 tokens × 2 的 KV Cache 计算与存储</text>
+      <text x="360" y="223" text-anchor="middle" font-size="10" fill="#065f46">块哈希 (SHA-256 of token content) 实现自动匹配，无需手动配置</text>
+    </svg>
+    <div class="svg-caption">图 5-2：多个请求共享相同前缀的物理块，通过引用计数管理共享关系</div>
+  </div>
+
+  <h3>5.5 块大小的影响</h3>
+
+  <p>块大小（<code>block_size</code>）是 PagedAttention 的关键参数，默认为 16：</p>
+
+  <ul>
+    <li><strong>太小</strong>（如 4）：块表变大，元数据开销增加，CUDA 内核需要更多间接寻址</li>
+    <li><strong>太大</strong>（如 64）：最后一块的内部碎片增大，内存利用率下降</li>
+    <li><strong>默认 16</strong>：在元数据开销和碎片率之间取得平衡，适合大多数场景</li>
+  </ul>
+
+  <p>每个块的实际内存大小计算公式：</p>
+  <pre><code>block_bytes = 2 (K+V) × block_size × num_kv_heads × head_size × dtype_bytes
+
+# 示例: LLaMA-7B, block_size=16, 32 KV heads, head_size=128, bf16
+# block_bytes = 2 × 16 × 32 × 128 × 2 = 262,144 bytes = 256 KB</code></pre>
+
+  <div class="callout note">
+    <div class="callout-title">论文数据</div>
+    根据 vLLM 论文（SOSP '23）的实验，PagedAttention 将 KV Cache 内存利用率从传统方法的 20-38% 提升至 <strong>96.3%</strong>，几乎实现了「零浪费」。这意味着相同硬件上可以同时处理更多的并发请求。
+  </div>
+</section>
+
+<!-- ======================== 6. SCHEDULER ======================== -->
+<section id="scheduler">
+  <h2 class="section-title"><span class="num">6</span>调度器（Scheduler）：交通指挥中心</h2>
+
+  <h3>6.1 调度器的作用</h3>
+
+  <p>如果说 PagedAttention 解决了「内存怎么存」的问题，那么调度器解决的是<strong>「内存和算力给谁用、什么时候用」</strong>的问题。</p>
+
+  <p>调度器的核心职责是：在每个推理步骤（step）之前，决定<strong>本次前向传播处理哪些请求</strong>。它就像高速公路上的交通指挥中心，时刻决定哪些车（请求）可以上路、哪些需要让行。</p>
+
+  <h3>6.2 三大队列：请求的生命周期</h3>
+
+  <p>vLLM 调度器维护三个队列来管理所有请求：</p>
+
+  <table>
+    <thead>
+      <tr><th>队列</th><th>状态</th><th>说明</th><th>优先级</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Running</strong></td>
+        <td>正在生成</td>
+        <td>已完成 Prefill，正在 Decode 生成 token 的请求</td>
+        <td>最高（不能让用户等太久）</td>
+      </tr>
+      <tr>
+        <td><strong>Waiting</strong></td>
+        <td>等待处理</td>
+        <td>新到达、尚未开始 Prefill 的请求</td>
+        <td>最低（新来的先排队）</td>
+      </tr>
+      <tr>
+        <td><strong>Swapped</strong></td>
+        <td>被换出</td>
+        <td>因显存不足被抢占，KV Cache 已转移到 CPU 内存</td>
+        <td>中等（需尽快恢复）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 780 380" xmlns="http://www.w3.org/2000/svg">
+      <rect width="780" height="380" fill="#f8fafc" rx="12"/>
+      <text x="390" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">调度器三大队列与状态流转</text>
+
+      <!-- Waiting Queue -->
+      <rect x="30" y="50" width="200" height="120" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+      <text x="130" y="72" text-anchor="middle" font-size="12" font-weight="600" fill="#1e40af">Waiting 队列</text>
+      <text x="130" y="90" text-anchor="middle" font-size="10" fill="#1e40af">新到达的请求</text>
+      <rect x="50" y="100" width="160" height="18" rx="3" fill="#2563eb" opacity="0.7"/>
+      <text x="130" y="113" text-anchor="middle" font-size="9" fill="white">请求 D (等待 Prefill)</text>
+      <rect x="50" y="122" width="160" height="18" rx="3" fill="#2563eb" opacity="0.7"/>
+      <text x="130" y="135" text-anchor="middle" font-size="9" fill="white">请求 E (等待 Prefill)</text>
+      <text x="130" y="158" text-anchor="middle" font-size="9" fill="#555">优先级: 最低</text>
+
+      <!-- Running Queue -->
+      <rect x="290" y="50" width="200" height="120" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+      <text x="390" y="72" text-anchor="middle" font-size="12" font-weight="600" fill="#065f46">Running 队列</text>
+      <text x="390" y="90" text-anchor="middle" font-size="10" fill="#065f46">正在 Decode 的请求</text>
+      <rect x="310" y="100" width="160" height="18" rx="3" fill="#059669" opacity="0.7"/>
+      <text x="390" y="113" text-anchor="middle" font-size="9" fill="white">请求 A (生成中...)</text>
+      <rect x="310" y="122" width="160" height="18" rx="3" fill="#059669" opacity="0.7"/>
+      <text x="390" y="135" text-anchor="middle" font-size="9" fill="white">请求 B (生成中...)</text>
+      <text x="390" y="158" text-anchor="middle" font-size="9" fill="#555">优先级: 最高</text>
+
+      <!-- Swapped Queue -->
+      <rect x="550" y="50" width="200" height="120" rx="8" fill="#fed7aa" stroke="#ea580c" stroke-width="1.5"/>
+      <text x="650" y="72" text-anchor="middle" font-size="12" font-weight="600" fill="#9a3412">Swapped 队列</text>
+      <text x="650" y="90" text-anchor="middle" font-size="10" fill="#9a3412">被抢占的请求</text>
+      <rect x="570" y="100" width="160" height="18" rx="3" fill="#ea580c" opacity="0.7"/>
+      <text x="650" y="113" text-anchor="middle" font-size="9" fill="white">请求 C (KV→CPU)</text>
+      <text x="650" y="158" text-anchor="middle" font-size="9" fill="#555">优先级: 中等</text>
+
+      <!-- Arrows -->
+      <!-- Waiting -> Running (admit) -->
+      <path d="M230 95 Q260 95 290 95" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#sarrow)"/>
+      <text x="260" y="88" text-anchor="middle" font-size="9" fill="#059669">准入</text>
+
+      <!-- Running -> Swapped (preempt) -->
+      <path d="M490 95 Q520 95 550 95" fill="none" stroke="#ea580c" stroke-width="2" marker-end="url(#oarrow)"/>
+      <text x="520" y="88" text-anchor="middle" font-size="9" fill="#ea580c">抢占</text>
+
+      <!-- Swapped -> Running (resume) -->
+      <path d="M550 135 Q520 160 490 135" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#barrow)"/>
+      <text x="520" y="155" text-anchor="middle" font-size="9" fill="#2563eb">恢复</text>
+
+      <!-- Running -> Done -->
+      <rect x="310" y="200" width="160" height="28" rx="6" fill="#e2e8f0" stroke="#94a3b8"/>
+      <text x="390" y="218" text-anchor="middle" font-size="10" fill="#555">完成 → 释放 KV 块</text>
+      <path d="M390 170 L390 200" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#garrow)"/>
+
+      <!-- Scheduling order -->
+      <rect x="30" y="250" width="720" height="110" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <text x="390" y="272" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">每步调度顺序</text>
+      <text x="50" y="294" font-size="11" fill="#92400e">① 优先保证 Running 中的 Decode 请求继续生成（每步 +1 token）</text>
+      <text x="50" y="314" font-size="11" fill="#92400e">② 尝试恢复 Swapped 中的请求（从 CPU 换回 KV Cache）</text>
+      <text x="50" y="334" font-size="11" fill="#92400e">③ 如有余力，从 Waiting 准入新请求执行 Prefill</text>
+      <text x="50" y="354" font-size="10" fill="#555">目标：GPU 永不空闲，Decode 延迟最小化</text>
+
+      <defs>
+        <marker id="sarrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#059669"/></marker>
+        <marker id="oarrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#ea580c"/></marker>
+        <marker id="barrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#2563eb"/></marker>
+        <marker id="garrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/></marker>
+      </defs>
+    </svg>
+    <div class="svg-caption">图 6-1：调度器维护三大队列，请求在队列间流转，每步按优先级调度</div>
+  </div>
+
+  <h3>6.3 连续批处理（Continuous Batching）</h3>
+
+  <p>连续批处理是 vLLM 高吞吐的关键。与传统静态批处理不同，它<strong>在每个推理步骤重新决定 batch 组成</strong>：</p>
+
+  <table>
+    <thead>
+      <tr><th>特性</th><th>静态批处理</th><th>连续批处理 (vLLM)</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>调度时机</td><td>每个 batch 一次</td><td>每个 token（每步）一次</td></tr>
+      <tr><td>请求加入</td><td>必须等当前 batch 全部完成</td><td>随时可以加入</td></tr>
+      <tr><td>请求退出</td><td>必须等最长请求完成</td><td>完成即退出，释放资源</td></tr>
+      <tr><td>GPU 利用率</td><td>低（空位无法填补）</td><td>高（空位立即被新请求填补）</td></tr>
+      <tr><td>类比</td><td>大巴车：满员发车，到终点才下车</td><td>公交车：每站可上可下</td></tr>
+    </tbody>
+  </table>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 780 290" xmlns="http://www.w3.org/2000/svg">
+      <rect width="780" height="290" fill="#f8fafc" rx="12"/>
+      <text x="390" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">连续批处理：动态调整 batch 组成</text>
+
+      <!-- Static batching -->
+      <text x="180" y="52" text-anchor="middle" font-size="12" font-weight="600" fill="#dc2626">静态批处理</text>
+      <text x="50" y="76" font-size="9" fill="#555">Step 1</text>
+      <rect x="50" y="80" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="80" y="94" text-anchor="middle" font-size="8" fill="white">A</text>
+      <rect x="114" y="80" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="144" y="94" text-anchor="middle" font-size="8" fill="white">B</text>
+      <rect x="178" y="80" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="208" y="94" text-anchor="middle" font-size="8" fill="white">C</text>
+      <rect x="242" y="80" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="272" y="94" text-anchor="middle" font-size="8" fill="white">D</text>
+
+      <text x="50" y="116" font-size="9" fill="#555">Step 2</text>
+      <rect x="50" y="120" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="80" y="134" text-anchor="middle" font-size="8" fill="white">A</text>
+      <rect x="114" y="120" width="60" height="20" rx="3" fill="#fecaca" stroke="#dc2626" stroke-dasharray="2,2"/><text x="144" y="134" text-anchor="middle" font-size="8" fill="#dc2626">B✓</text>
+      <rect x="178" y="120" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="208" y="134" text-anchor="middle" font-size="8" fill="white">C</text>
+      <rect x="242" y="120" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="272" y="134" text-anchor="middle" font-size="8" fill="white">D</text>
+
+      <text x="50" y="156" font-size="9" fill="#555">Step 3</text>
+      <rect x="50" y="160" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="80" y="174" text-anchor="middle" font-size="8" fill="white">A</text>
+      <rect x="114" y="160" width="60" height="20" rx="3" fill="#fca5a5" opacity="0.3"/><text x="144" y="174" text-anchor="middle" font-size="8" fill="#dc2626">空</text>
+      <rect x="178" y="160" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="208" y="174" text-anchor="middle" font-size="8" fill="white">C</text>
+      <rect x="242" y="160" width="60" height="20" rx="3" fill="#dc2626" opacity="0.8"/><text x="272" y="174" text-anchor="middle" font-size="8" fill="white">D</text>
+
+      <text x="180" y="200" text-anchor="middle" font-size="10" fill="#dc2626">B 完成后空位浪费，新请求无法加入</text>
+
+      <!-- Divider -->
+      <line x1="340" y1="46" x2="340" y2="220" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4,3"/>
+
+      <!-- Continuous batching -->
+      <text x="560" y="52" text-anchor="middle" font-size="12" font-weight="600" fill="#059669">连续批处理 (vLLM)</text>
+      <text x="370" y="76" font-size="9" fill="#555">Step 1</text>
+      <rect x="370" y="80" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="395" y="94" text-anchor="middle" font-size="8" fill="white">A</text>
+      <rect x="426" y="80" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="451" y="94" text-anchor="middle" font-size="8" fill="white">B</text>
+      <rect x="482" y="80" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="507" y="94" text-anchor="middle" font-size="8" fill="white">C</text>
+      <rect x="538" y="80" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="563" y="94" text-anchor="middle" font-size="8" fill="white">D</text>
+
+      <text x="370" y="116" font-size="9" fill="#555">Step 2</text>
+      <rect x="370" y="120" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="395" y="134" text-anchor="middle" font-size="8" fill="white">A</text>
+      <rect x="426" y="120" width="50" height="20" rx="3" fill="#bbf7d0" stroke="#059669" stroke-dasharray="2,2"/><text x="451" y="134" text-anchor="middle" font-size="8" fill="#059669">B✓</text>
+      <rect x="482" y="120" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="507" y="134" text-anchor="middle" font-size="8" fill="white">C</text>
+      <rect x="538" y="120" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="563" y="134" text-anchor="middle" font-size="8" fill="white">D</text>
+
+      <text x="370" y="156" font-size="9" fill="#555">Step 3</text>
+      <rect x="370" y="160" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="395" y="174" text-anchor="middle" font-size="8" fill="white">A</text>
+      <rect x="426" y="160" width="50" height="20" rx="3" fill="#2563eb" opacity="0.8"/><text x="451" y="174" text-anchor="middle" font-size="8" fill="white">E(新)</text>
+      <rect x="482" y="160" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="507" y="174" text-anchor="middle" font-size="8" fill="white">C</text>
+      <rect x="538" y="160" width="50" height="20" rx="3" fill="#059669" opacity="0.8"/><text x="563" y="174" text-anchor="middle" font-size="8" fill="white">D</text>
+
+      <text x="560" y="200" text-anchor="middle" font-size="10" fill="#059669">B 完成后立即被新请求 E 填补，GPU 永不空闲</text>
+
+      <!-- Bottom note -->
+      <rect x="30" y="230" width="720" height="44" rx="8" fill="#f0fdf4" stroke="#059669"/>
+      <text x="390" y="250" text-anchor="middle" font-size="11" fill="#065f46">连续批处理 = 每步重新组 batch</text>
+      <text x="390" y="268" text-anchor="middle" font-size="10" fill="#065f46">完成即退出 → 释放 KV 块 → 新请求立即补位 → 吞吐量提升 3-10 倍</text>
+    </svg>
+    <div class="svg-caption">图 6-2：静态批处理（左）存在空位浪费，连续批处理（右）动态填补空位</div>
+  </div>
+
+  <h3>6.4 抢占机制（Preemption）</h3>
+
+  <p>当所有 Running 请求的 KV Cache 同时增长，显存可能不够用。此时调度器会触发<strong>抢占</strong>——暂停某些请求，释放其 KV Cache 空间给更高优先级的请求。vLLM 有两种抢占策略：</p>
+
+  <table>
+    <thead>
+      <tr><th>策略</th><th>原理</th><th>优点</th><th>缺点</th><th>版本</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Recompute（重计算）</strong></td>
+        <td>丢弃被抢占请求的所有 KV 块，将其放回 Waiting 队列。恢复时重新执行 Prefill</td>
+        <td>无需 CPU↔GPU 传输，释放内存即刻完成</td>
+        <td>恢复时需重新计算 Prefill，浪费算力</td>
+        <td>V1 默认</td>
+      </tr>
+      <tr>
+        <td><strong>Swap（换出）</strong></td>
+        <td>将被抢占请求的 KV 块复制到 CPU 内存，恢复时再复制回 GPU</td>
+        <td>保留计算结果，恢复时无需重算</td>
+        <td>PCIe 传输带宽开销，占用 CPU 内存</td>
+        <td>V0 默认</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <div class="callout-title">注意：抢占风暴（Thrashing）</div>
+    如果 <code>max_num_seqs</code> 设置过大，导致请求频繁被抢占又恢复，系统会陷入「抢占风暴」——大量时间花在换入换出/重计算上，吞吐量骤降，P99 延迟飙升。这类似于操作系统的页面抖动。解决方案：合理设置 <code>max_num_seqs</code> 和 <code>gpu_memory_utilization</code>，保留一定的内存余量。
+  </div>
+
+  <h3>6.5 Chunked Prefill：避免长请求阻塞</h3>
+
+  <p>一个长 prompt（如 32K tokens）的 Prefill 是计算密集型操作，如果在一个步骤内全部处理，会阻塞所有正在 Decode 的请求——这就是<strong>队头阻塞（Head-of-Line Blocking）</strong>。</p>
+
+  <p><strong>Chunked Prefill</strong> 将长 prompt 切分成多个 chunk（受 <code>max_num_batched_tokens</code> 限制），每个步骤只处理一个 chunk，并与其它请求的 Decode 混合执行。这样长请求的 Prefill 分散在多个步骤中，不会阻塞其他请求的 token 生成。</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 760 200" xmlns="http://www.w3.org/2000/svg">
+      <rect width="760" height="200" fill="#f8fafc" rx="12"/>
+      <text x="380" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">Chunked Prefill：长 prompt 分块处理</text>
+
+      <!-- Without chunked prefill -->
+      <text x="180" y="52" text-anchor="middle" font-size="11" font-weight="600" fill="#dc2626">无 Chunked Prefill</text>
+      <text x="40" y="74" font-size="9" fill="#555">Step 1: 全部 Prefill</text>
+      <rect x="40" y="78" width="280" height="22" rx="3" fill="#dc2626" opacity="0.8"/>
+      <text x="180" y="93" text-anchor="middle" font-size="9" fill="white">长 Prompt Prefill (32K tokens) — 阻塞所有 Decode</text>
+      <text x="40" y="116" font-size="9" fill="#555">Step 2: 恢复 Decode</text>
+      <rect x="40" y="120" width="40" height="22" rx="3" fill="#059669"/><text x="60" y="135" text-anchor="middle" font-size="8" fill="white">A</text>
+      <rect x="84" y="120" width="40" height="22" rx="3" fill="#059669"/><text x="104" y="135" text-anchor="middle" font-size="8" fill="white">B</text>
+      <rect x="128" y="120" width="40" height="22" rx="3" fill="#059669"/><text x="148" y="135" text-anchor="middle" font-size="8" fill="white">C</text>
+      <text x="180" y="160" text-anchor="middle" font-size="10" fill="#dc2626">Step 1 中 A/B/C 的 Decode 被完全阻塞</text>
+
+      <line x1="360" y1="46" x2="360" y2="170" stroke="#cbd5e1" stroke-dasharray="4,3"/>
+
+      <!-- With chunked prefill -->
+      <text x="560" y="52" text-anchor="middle" font-size="11" font-weight="600" fill="#059669">有 Chunked Prefill</text>
+      <text x="380" y="74" font-size="9" fill="#555">Step 1: Prefill chunk 1 + Decode</text>
+      <rect x="380" y="78" width="100" height="22" rx="3" fill="#ea580c" opacity="0.8"/><text x="430" y="93" text-anchor="middle" font-size="8" fill="white">Chunk 1</text>
+      <rect x="486" y="78" width="35" height="22" rx="3" fill="#059669"/><text x="503" y="93" text-anchor="middle" font-size="8" fill="white">A</text>
+      <rect x="525" y="78" width="35" height="22" rx="3" fill="#059669"/><text x="542" y="93" text-anchor="middle" font-size="8" fill="white">B</text>
+      <rect x="564" y="78" width="35" height="22" rx="3" fill="#059669"/><text x="581" y="93" text-anchor="middle" font-size="8" fill="white">C</text>
+
+      <text x="380" y="116" font-size="9" fill="#555">Step 2: Prefill chunk 2 + Decode</text>
+      <rect x="380" y="120" width="100" height="22" rx="3" fill="#ea580c" opacity="0.8"/><text x="430" y="135" text-anchor="middle" font-size="8" fill="white">Chunk 2</text>
+      <rect x="486" y="120" width="35" height="22" rx="3" fill="#059669"/><text x="503" y="135" text-anchor="middle" font-size="8" fill="white">A</text>
+      <rect x="525" y="120" width="35" height="22" rx="3" fill="#059669"/><text x="542" y="135" text-anchor="middle" font-size="8" fill="white">B</text>
+      <rect x="564" y="120" width="35" height="22" rx="3" fill="#059669"/><text x="581" y="135" text-anchor="middle" font-size="8" fill="white">C</text>
+
+      <text x="560" y="160" text-anchor="middle" font-size="10" fill="#059669">每步混合 Prefill + Decode，延迟更平滑</text>
+    </svg>
+    <div class="svg-caption">图 6-3：Chunked Prefill 将长 prompt 分块，与 Decode 混合执行，避免队头阻塞</div>
+  </div>
+</section>
+
+<!-- ======================== 7. EXECUTION ENGINE ======================== -->
+<section id="execution-engine">
+  <h2 class="section-title"><span class="num">7</span>模型执行引擎：GPU 上的实干家</h2>
+
+  <h3>7.1 执行层级结构</h3>
+
+  <p>调度器做出决策后，需要有人<strong>真正在 GPU 上执行计算</strong>。这就是执行引擎的职责。vLLM 的执行层采用三级结构：</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 760 340" xmlns="http://www.w3.org/2000/svg">
+      <rect width="760" height="340" fill="#f8fafc" rx="12"/>
+      <text x="380" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">执行引擎三级结构</text>
+
+      <!-- Executor -->
+      <rect x="180" y="46" width="400" height="60" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+      <text x="380" y="68" text-anchor="middle" font-size="13" font-weight="700" fill="#92400e">Executor（执行器）</text>
+      <text x="380" y="88" text-anchor="middle" font-size="11" fill="#92400e">管理 Worker 进程 · 引擎与 GPU 之间的通信桥梁</text>
+      <rect x="200" y="94" width="110" height="0" fill="none"/>
+
+      <!-- Arrow -->
+      <line x1="380" y1="108" x2="380" y2="128" stroke="#94a3b8" stroke-width="2" marker-end="url(#earrow)"/>
+
+      <!-- Worker -->
+      <rect x="180" y="132" width="400" height="60" rx="8" fill="#fce7f3" stroke="#be185d" stroke-width="2"/>
+      <text x="380" y="154" text-anchor="middle" font-size="13" font-weight="700" fill="#831843">Worker（工作器）</text>
+      <text x="380" y="174" text-anchor="middle" font-size="11" fill="#831843">初始化 GPU · 加载模型 · 管理 KV Cache · 执行分布式通信</text>
+
+      <!-- Arrow -->
+      <line x1="380" y1="194" x2="380" y2="214" stroke="#94a3b8" stroke-width="2" marker-end="url(#earrow)"/>
+
+      <!-- ModelRunner -->
+      <rect x="180" y="218" width="400" height="60" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+      <text x="380" y="240" text-anchor="middle" font-size="13" font-weight="700" fill="#5b21b6">ModelRunner（模型运行器）</text>
+      <text x="380" y="260" text-anchor="middle" font-size="11" fill="#5b21b6">准备输入张量 · 执行前向传播 · 采样 · CUDA Graph 管理</text>
+
+      <!-- Arrow -->
+      <line x1="380" y1="280" x2="380" y2="296" stroke="#94a3b8" stroke-width="2" marker-end="url(#earrow)"/>
+
+      <!-- CUDA -->
+      <rect x="280" y="300" width="200" height="30" rx="6" fill="#1e293b"/>
+      <text x="380" y="320" text-anchor="middle" font-size="11" fill="#e2e8f0">CUDA / HIP Kernels</text>
+
+      <!-- Side annotations -->
+      <text x="600" y="76" font-size="10" fill="#92400e">← UniProc / Multiproc / Ray</text>
+      <text x="600" y="162" font-size="10" fill="#831843">← 每张 GPU 一个 Worker</text>
+      <text x="600" y="248" font-size="10" fill="#5b21b6">← GPUModelRunner / TPUModelRunner</text>
+
+      <defs>
+        <marker id="earrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/></marker>
+      </defs>
+    </svg>
+    <div class="svg-caption">图 7-1：执行引擎三级结构，职责逐层细化</div>
+  </div>
+
+  <h4>Executor（执行器）</h4>
+  <p>执行器是引擎与 GPU 之间的桥梁，负责管理 Worker 进程。根据部署模式不同，有三种实现：</p>
+  <ul>
+    <li><strong>UniProcExecutor</strong>：单进程执行，Worker 与引擎在同一进程中。适合单 GPU 开发调试</li>
+    <li><strong>MultiprocExecutor</strong>：多进程执行，每张 GPU 对应一个独立 Worker 进程。提供更好的隔离性</li>
+    <li><strong>RayGPUExecutor</strong>：基于 Ray 的分布式执行，支持跨节点多 GPU。适合大规模集群部署</li>
+  </ul>
+
+  <h4>Worker（工作器）</h4>
+  <p>每个 Worker 绑定一张 GPU，负责三件大事：</p>
+  <ol>
+    <li><strong>初始化设备</strong>：分配 CUDA 设备、验证显存是否充足、设置分布式配置（TP/PP/DP）</li>
+    <li><strong>加载模型</strong>：实例化模型架构、加载权重、调用 <code>model.eval()</code></li>
+    <li><strong>初始化 KV Cache</strong>：运行性能分析前向传播、计算可用显存能容纳多少 KV 块、分配并绑定 KV Cache 张量</li>
+  </ol>
+
+  <h4>ModelRunner（模型运行器）</h4>
+  <p>ModelRunner 是真正执行前向传播的组件，核心流程：</p>
+  <ol>
+    <li><strong>_prepare_inputs()</strong>：根据调度器输出，准备 <code>input_ids</code>、<code>positions</code>、注意力元数据（包括块表）</li>
+    <li><strong>execute_model()</strong>：调用模型的 <code>forward()</code> 方法，执行前向传播，得到 logits</li>
+    <li><strong>sample()</strong>：根据采样参数（temperature、top_p 等）从 logits 中采样下一个 token</li>
+    <li><strong>返回结果</strong>：将采样的 token 和相关元数据返回给引擎</li>
+  </ol>
+
+  <h3>7.2 GPU 显存管理</h3>
+
+  <p>vLLM 启动时的显存分配过程非常精巧：</p>
+
+  <pre><code>1. 加载模型权重         → 占用约 60-65% 显存
+2. 运行 dummy forward   → 测量激活内存（约 5%）
+3. 计算可用 KV Cache 空间 = 总显存 × gpu_memory_utilization - 权重 - 激活
+4. 计算可容纳的块数      = 可用空间 / 每块大小
+5. 预分配所有 KV Cache 块 → 占用约 25-30% 显存</code></pre>
+
+  <p>关键参数 <code>gpu_memory_utilization</code>（默认 0.9）控制 vLLM 最多使用多少比例的 GPU 显存。预留的 10% 作为安全余量，防止 OOM。</p>
+
+  <h3>7.3 CUDA Graph 优化</h3>
+
+  <p>每次前向传播涉及大量 CUDA 内核启动，每次启动都有固定开销（约 10-50 微秒）。对于 Decode 阶段（每次只生成一个 token，计算量很小），内核启动开销占比很高。</p>
+
+  <p><strong>CUDA Graph</strong> 将整个前向传播的计算图「录制」下来，后续直接「回放」，跳过内核启动开销：</p>
+
+  <ul>
+    <li><strong>录制阶段</strong>：对常见的 batch size 运行一次模拟前向传播，将 GPU 操作序列录制为 DAG</li>
+    <li><strong>回放阶段</strong>：实际推理时，直接启动预先录制的图，用新输入替换旧输入</li>
+    <li><strong>效果</strong>：Decode 阶段延迟降低 20-40%，尤其对小 batch 效果显著</li>
+  </ul>
+
+  <div class="callout info">
+    <div class="callout-title">何时禁用 CUDA Graph？</div>
+    如果模型结构动态变化（如变长输入需要不同 shape），或使用了不兼容 CUDA Graph 的自定义算子，可以通过 <code>--enforce-eager</code> 禁用 CUDA Graph，回退到即时执行模式。
+  </div>
+
+  <h3>7.4 分布式执行</h3>
+
+  <p>对于大模型（如 70B+），单张 GPU 无法容纳，需要多卡并行。vLLM 支持两种并行策略：</p>
+
+  <table>
+    <thead>
+      <tr><th>并行策略</th><th>原理</th><th>适用场景</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>张量并行 (TP)</strong></td>
+        <td>将每一层的权重矩阵切分到多张 GPU 上，每张卡计算一部分，通过 All-Reduce 汇总结果</td>
+        <td>同节点多 GPU，延迟低</td>
+      </tr>
+      <tr>
+        <td><strong>流水线并行 (PP)</strong></td>
+        <td>将模型的不同层分配到不同 GPU 上，请求像流水线一样依次经过各卡</td>
+        <td>跨节点部署，模型极大</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>Worker 之间通过 NCCL（NVIDIA Collective Communications Library）或 Ray 进行通信和同步。</p>
+</section>
+
+<!-- ======================== 8. API SERVER ======================== -->
+<section id="api-server">
+  <h2 class="section-title"><span class="num">8</span>推理服务接口：OpenAI 兼容 API</h2>
+
+  <h3>8.1 为什么需要服务接口？</h3>
+
+  <p>前面讲的都是「引擎内部」的组件。但在实际使用中，用户需要通过<strong>网络 API</strong> 来调用推理服务。vLLM 提供了与 OpenAI API 完全兼容的 HTTP 接口，让你可以用标准的 OpenAI SDK 直接调用本地部署的模型。</p>
+
+  <h3>8.2 API Server 架构</h3>
+
+  <p>vLLM 的服务层基于 <strong>FastAPI</strong> 构建，核心组件包括：</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+      <rect width="760" height="300" fill="#f8fafc" rx="12"/>
+      <text x="380" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">API Server 架构</text>
+
+      <!-- Client -->
+      <rect x="40" y="50" width="140" height="40" rx="6" fill="#2563eb"/>
+      <text x="110" y="75" text-anchor="middle" font-size="11" fill="white">OpenAI SDK / HTTP 客户端</text>
+
+      <!-- Arrow -->
+      <line x1="180" y1="70" x2="230" y2="70" stroke="#94a3b8" stroke-width="2" marker-end="url(#aarrow)"/>
+
+      <!-- FastAPI -->
+      <rect x="235" y="46" width="180" height="50" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+      <text x="325" y="66" text-anchor="middle" font-size="12" font-weight="600" fill="#1e40af">FastAPI Server</text>
+      <text x="325" y="84" text-anchor="middle" font-size="10" fill="#1e40af">/v1/chat/completions</text>
+
+      <!-- Arrow -->
+      <line x1="415" y1="70" x2="465" y2="70" stroke="#94a3b8" stroke-width="2" marker-end="url(#aarrow)"/>
+
+      <!-- AsyncLLMEngine -->
+      <rect x="470" y="46" width="180" height="50" rx="6" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="560" y="66" text-anchor="middle" font-size="12" font-weight="600" fill="#5b21b6">AsyncLLMEngine</text>
+      <text x="560" y="84" text-anchor="middle" font-size="10" fill="#5b21b6">异步请求队列 · 流式输出</text>
+
+      <!-- Arrow down -->
+      <line x1="560" y1="98" x2="560" y2="120" stroke="#94a3b8" stroke-width="2" marker-end="url(#aarrow)"/>
+
+      <!-- LLMEngine -->
+      <rect x="470" y="124" width="180" height="40" rx="6" fill="#fed7aa" stroke="#ea580c" stroke-width="1.5"/>
+      <text x="560" y="149" text-anchor="middle" font-size="12" font-weight="600" fill="#9a3412">LLMEngine (核心引擎)</text>
+
+      <!-- API endpoints -->
+      <rect x="235" y="110" width="180" height="100" rx="6" fill="#f0fdf4" stroke="#059669" stroke-width="1.5"/>
+      <text x="325" y="128" text-anchor="middle" font-size="11" font-weight="600" fill="#065f46">支持的 API 端点</text>
+      <text x="250" y="146" font-size="9" fill="#065f46">• /v1/chat/completions</text>
+      <text x="250" y="160" font-size="9" fill="#065f46">• /v1/completions</text>
+      <text x="250" y="174" font-size="9" fill="#065f46">• /v1/embeddings</text>
+      <text x="250" y="188" font-size="9" fill="#065f46">• /v1/models</text>
+      <text x="250" y="202" font-size="9" fill="#065f46">• /v1/score (相关性评分)</text>
+
+      <!-- Features -->
+      <rect x="40" y="110" width="170" height="100" rx="6" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <text x="125" y="128" text-anchor="middle" font-size="11" font-weight="600" fill="#92400e">核心特性</text>
+      <text x="55" y="146" font-size="9" fill="#92400e">• 流式输出 (SSE)</text>
+      <text x="55" y="160" font-size="9" fill="#92400e">• 多 LoRA 动态切换</text>
+      <text x="55" y="174" font-size="9" fill="#92400e">• 多模态输入 (图像)</text>
+      <text x="55" y="188" font-size="9" fill="#92400e">• Guided decoding</text>
+      <text x="55" y="202" font-size="9" fill="#92400e">• Prometheus 监控</text>
+
+      <!-- Bottom flow -->
+      <rect x="40" y="230" width="680" height="50" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+      <text x="380" y="250" text-anchor="middle" font-size="11" fill="#555">请求流：Client → HTTP → FastAPI 路由 → AsyncLLMEngine.add_request() → LLMEngine 调度执行</text>
+      <text x="380" y="268" text-anchor="middle" font-size="11" fill="#555">响应流：LLMEngine 返回 token → AsyncLLMEngine 封装 → SSE 流式推送 / 一次性返回</text>
+
+      <defs>
+        <marker id="aarrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/></marker>
+      </defs>
+    </svg>
+    <div class="svg-caption">图 8-1：API Server 架构，从 HTTP 请求到引擎执行的完整链路</div>
+  </div>
+
+  <h3>8.3 快速启动</h3>
+
+  <pre><code># 启动 OpenAI 兼容 API 服务
+python -m vllm.entrypoints.openai.api_server \
+    --model meta-llama/Llama-3-8B-Instruct \
+    --tensor-parallel-size 1 \
+    --max-model-len 8192 \
+    --port 8000</code></pre>
+
+  <h3>8.4 调用示例</h3>
+
+  <pre><code>from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="token-abc123"  # vLLM 不验证 key，可任意填写
+)
+
+# 对话补全
+response = client.chat.completions.create(
+    model="meta-llama/Llama-3-8B-Instruct",
+    messages=[
+        {"role": "system", "content": "你是一个有帮助的助手。"},
+        {"role": "user", "content": "用一句话解释什么是 PagedAttention。"}
+    ],
+    max_tokens=200,
+    temperature=0.7,
+    stream=True  # 流式输出
+)
+
+for chunk in response:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")</code></pre>
+
+  <h3>8.5 AsyncLLMEngine：异步引擎</h3>
+
+  <p>API Server 使用 <strong>AsyncLLMEngine</strong> 包装核心 LLMEngine，提供异步接口：</p>
+
+  <ul>
+    <li><strong>异步请求队列</strong>：多个 HTTP 请求可以并发提交，引擎内部排队处理</li>
+    <li><strong>流式输出</strong>：每生成一个 token 就通过 SSE（Server-Sent Events）推送给客户端，用户看到逐字输出效果</li>
+    <li><strong>异步输出处理</strong>：V1 架构支持将 GPU→CPU 的输出拷贝与下一步计算重叠，进一步提高吞吐</li>
+  </ul>
+
+  <div class="callout tip">
+    <div class="callout-title">V0 与 V1 架构</div>
+    vLLM 正在从 V0 架构向 V1 架构迁移。V1 的主要改进包括：默认使用 Recompute 抢占（而非 Swap）、更高效的调度器、异步输出处理、改进的 Prefix Caching。V1 在多数场景下比 V0 快 1.7 倍。可以通过 <code>VLLM_USE_V1=1</code> 环境变量启用。
+  </div>
+</section>
+
+<!-- ======================== 9. COLLABORATION ======================== -->
+<section id="collaboration">
+  <h2 class="section-title"><span class="num">9</span>组件协作流程：一个请求的完整旅程</h2>
+
+  <p>现在让我们把所有组件串联起来，跟踪一个用户请求从到达到完成的<strong>完整生命周期</strong>：</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 820 620" xmlns="http://www.w3.org/2000/svg">
+      <rect width="820" height="620" fill="#f8fafc" rx="12"/>
+      <text x="410" y="26" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">请求完整生命周期</text>
+
+      <!-- Step 1: Request arrives -->
+      <rect x="40" y="46" width="740" height="50" rx="8" fill="#dbeafe" stroke="#2563eb"/>
+      <circle cx="66" cy="71" r="14" fill="#2563eb"/>
+      <text x="66" y="76" text-anchor="middle" font-size="12" fill="white" font-weight="700">1</text>
+      <text x="90" y="67" font-size="12" font-weight="600" fill="#1e40af">请求到达</text>
+      <text x="90" y="84" font-size="11" fill="#1e40af">用户通过 HTTP POST /v1/chat/completions 发送请求 → FastAPI 接收 → AsyncLLMEngine.add_request()</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="98" x2="410" y2="114" stroke="#94a3b8" stroke-width="2" marker-end="url(#carrow)"/>
+
+      <!-- Step 2: Tokenize & enqueue -->
+      <rect x="40" y="118" width="740" height="50" rx="8" fill="#ede9fe" stroke="#7c3aed"/>
+      <circle cx="66" cy="143" r="14" fill="#7c3aed"/>
+      <text x="66" y="148" text-anchor="middle" font-size="12" fill="white" font-weight="700">2</text>
+      <text x="90" y="139" font-size="12" font-weight="600" fill="#5b21b6">分词与入队</text>
+      <text x="90" y="156" font-size="11" fill="#5b21b6">Tokenizer 将 prompt 转为 token IDs → 封装为 SequenceGroup → 加入 Scheduler 的 Waiting 队列</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="170" x2="410" y2="186" stroke="#94a3b8" stroke-width="2" marker-end="url(#carrow)"/>
+
+      <!-- Step 3: Schedule -->
+      <rect x="40" y="190" width="740" height="50" rx="8" fill="#fed7aa" stroke="#ea580c"/>
+      <circle cx="66" cy="215" r="14" fill="#ea580c"/>
+      <text x="66" y="220" text-anchor="middle" font-size="12" fill="white" font-weight="700">3</text>
+      <text x="90" y="211" font-size="12" font-weight="600" fill="#9a3412">调度决策</text>
+      <text x="90" y="228" font-size="11" fill="#9a3412">Scheduler.schedule() → 优先 Running decode → 恢复 Swapped → 准入 Waiting → 输出 SchedulerOutputs</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="242" x2="410" y2="258" stroke="#94a3b8" stroke-width="2" marker-end="url(#carrow)"/>
+
+      <!-- Step 4: Allocate blocks -->
+      <rect x="40" y="262" width="740" height="50" rx="8" fill="#d1fae5" stroke="#059669"/>
+      <circle cx="66" cy="287" r="14" fill="#059669"/>
+      <text x="66" y="292" text-anchor="middle" font-size="12" fill="white" font-weight="700">4</text>
+      <text x="90" y="283" font-size="12" font-weight="600" fill="#065f46">KV Cache 分配</text>
+      <text x="90" y="300" font-size="11" fill="#065f46">BlockManager 从物理块池分配块 → 创建/更新块表 → Prefix Caching 检查可复用前缀</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="314" x2="410" y2="330" stroke="#94a3b8" stroke-width="2" marker-end="url(#carrow)"/>
+
+      <!-- Step 5: Execute -->
+      <rect x="40" y="334" width="740" height="50" rx="8" fill="#fce7f3" stroke="#be185d"/>
+      <circle cx="66" cy="359" r="14" fill="#be185d"/>
+      <text x="66" y="364" text-anchor="middle" font-size="12" fill="white" font-weight="700">5</text>
+      <text x="90" y="355" font-size="12" font-weight="600" fill="#831843">模型执行</text>
+      <text x="90" y="372" font-size="11" fill="#831843">ModelRunner 准备输入(input_ids, positions, block_table) → forward() → PagedAttention 注意力计算 → logits</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="386" x2="410" y2="402" stroke="#94a3b8" stroke-width="2" marker-end="url(#carrow)"/>
+
+      <!-- Step 6: Sample -->
+      <rect x="40" y="406" width="740" height="50" rx="8" fill="#fef3c7" stroke="#d97706"/>
+      <circle cx="66" cy="431" r="14" fill="#d97706"/>
+      <text x="66" y="436" text-anchor="middle" font-size="12" fill="white" font-weight="700">6</text>
+      <text x="90" y="427" font-size="12" font-weight="600" fill="#92400e">采样</text>
+      <text x="90" y="444" font-size="11" fill="#92400e">根据 temperature/top_p/top_k 等参数从 logits 采样 → 得到下一个 token → 检查停止条件 (EOS/max_tokens)</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="458" x2="410" y2="474" stroke="#94a3b8" stroke-width="2" marker-end="url(#carrow)"/>
+
+      <!-- Step 7: Update state -->
+      <rect x="40" y="478" width="740" height="50" rx="8" fill="#dbeafe" stroke="#2563eb"/>
+      <circle cx="66" cy="503" r="14" fill="#2563eb"/>
+      <text x="66" y="508" text-anchor="middle" font-size="12" fill="white" font-weight="700">7</text>
+      <text x="90" y="499" font-size="12" font-weight="600" fill="#1e40af">状态更新与输出</text>
+      <text x="90" y="516" font-size="11" fill="#1e40af">追加新 token 到序列 → 更新 KV Cache 块表 → 流式推送 token 给客户端 → 回到 Step 3 继续下一个 token</text>
+
+      <!-- Arrow -->
+      <line x1="410" y1="530" x2="410" y2="546" stroke="#94a3b8" stroke-width="2" marker-end="url(#carrow)"/>
+
+      <!-- Step 8: Complete -->
+      <rect x="40" y="550" width="740" height="50" rx="8" fill="#d1fae5" stroke="#059669"/>
+      <circle cx="66" cy="575" r="14" fill="#059669"/>
+      <text x="66" y="580" text-anchor="middle" font-size="12" fill="white" font-weight="700">8</text>
+      <text x="90" y="571" font-size="12" font-weight="600" fill="#065f46">请求完成</text>
+      <text x="90" y="588" font-size="11" fill="#065f46">生成 EOS 或达到 max_tokens → 释放所有 KV Cache 块 → 返回完整响应 → 从 Running 队列移除</text>
+
+      <defs>
+        <marker id="carrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/></marker>
+      </defs>
+    </svg>
+    <div class="svg-caption">图 9-1：一个请求从到达到完成的完整流程，步骤 3-7 在每个 token 生成时循环执行</div>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-title">循环的关键</div>
+    步骤 3 到 7 构成了一个<strong>迭代循环</strong>：每生成一个 token，调度器重新调度、分配内存、执行模型、采样输出。这个循环一直持续到请求完成。多个请求的 token 生成在同一循环中交替进行，这就是连续批处理的本质。
+  </div>
+</section>
+
+<!-- ======================== 10. LEARNING PATH ======================== -->
+<section id="learning-path">
+  <h2 class="section-title"><span class="num">10</span>学习路径与建议</h2>
+
+  <p>对于零基础读者，建议按以下路径循序渐进地学习 vLLM：</p>
+
+  <div class="step-card">
+    <div class="step-number">1</div>
+    <div class="step-content">
+      <h4>建立基础知识储备</h4>
+      <p>先理解 Transformer 架构和自注意力机制，搞清楚 Q/K/V 是什么。了解 LLM 推理的两个阶段：Prefill（处理输入）和 Decode（生成输出）。</p>
+      <p><strong>推荐资源</strong>：3Blue1Brown 的 Transformer 可视化视频、Jay Alammar 的《The Illustrated Transformer》</p>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">2</div>
+    <div class="step-content">
+      <h4>理解 KV Cache 的概念</h4>
+      <p>动手用 HuggingFace Transformers 跑一个小模型（如 opt-125m），观察推理过程中显存的变化。思考：为什么生成越长越慢？为什么 batch 越大越吃显存？</p>
+      <p><strong>实践</strong>：<code>nvidia-smi -l 1</code> 监控显存，对比 Prefill 和 Decode 阶段的显存变化</p>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">3</div>
+    <div class="step-content">
+      <h4>学习操作系统分页机制</h4>
+      <p>PagedAttention 的核心类比就是 OS 虚拟内存。理解页表、物理页、逻辑地址、缺页中断等概念，会让你对 PagedAttention 豁然开朗。</p>
+      <p><strong>推荐资源</strong>：OSTEP（Operating Systems: Three Easy Pieces）第 20-21 章</p>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">4</div>
+    <div class="step-content">
+      <h4>阅读 vLLM 论文</h4>
+      <p>论文《Efficient Memory Management for Large Language Model Serving with PagedAttention》（SOSP '23）是理解 vLLM 设计的最佳起点。重点关注 PagedAttention 的设计动机和实验数据。</p>
+      <p><strong>重点</strong>：Figure 2（内存浪费对比）、Figure 4（PagedAttention 架构图）、Figure 8（性能对比）</p>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">5</div>
+    <div class="step-content">
+      <h4>动手部署 vLLM</h4>
+      <p>用一个 7B 模型（如 Llama-3-8B-Instruct）在本地启动 vLLM 服务，用 OpenAI SDK 调用。调整 <code>max-num-seqs</code>、<code>gpu-memory-utilization</code> 等参数，观察吞吐和延迟的变化。</p>
+      <pre><code>pip install vllm
+vllm serve meta-llama/Llama-3-8B-Instruct --port 8000</code></pre>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">6</div>
+    <div class="step-content">
+      <h4>阅读核心源码</h4>
+      <p>按以下顺序阅读源码，建立从宏观到微观的理解：</p>
+      <ul>
+        <li><code>vllm/engine/llm_engine.py</code> → 理解引擎主循环</li>
+        <li><code>vllm/core/scheduler.py</code> → 理解调度逻辑和三大队列</li>
+        <li><code>vllm/core/block_manager.py</code> → 理解 PagedAttention 的块管理</li>
+        <li><code>vllm/worker/model_runner.py</code> → 理解模型执行流程</li>
+        <li><code>vllm/attention/backends/</code> → 理解注意力内核实现</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">7</div>
+    <div class="step-content">
+      <h4>性能调优实战</h4>
+      <p>使用 <code>vllm bench</code> 工具进行基准测试，理解关键参数的影响：</p>
+      <ul>
+        <li><code>max-num-seqs</code>：控制并发数，影响吞吐和延迟的权衡</li>
+        <li><code>max-num-batched-tokens</code>：控制每步 token 数，影响 Chunked Prefill 行为</li>
+        <li><code>gpu-memory-utilization</code>：控制显存使用比例，留余量防 OOM</li>
+        <li><code>block-size</code>：KV Cache 块大小，通常保持默认 16</li>
+        <li><code>enable-prefix-caching</code>：开启前缀缓存，适合多轮对话场景</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">8</div>
+    <div class="step-content">
+      <h4>探索高级特性</h4>
+      <p>在掌握基础后，可以进一步学习：</p>
+      <ul>
+        <li><strong>推测解码（Speculative Decoding）</strong>：用小模型预生成候选 token，大模型并行验证</li>
+        <li><strong>多 LoRA 动态加载</strong>：一个模型实例服务多个微调版本</li>
+        <li><strong>分离式 Prefill/Decode</strong>：Prefill 和 Decode 在不同 GPU 池上执行</li>
+        <li><strong>多模态推理</strong>：支持图像、视频等输入</li>
+        <li><strong>V1 架构</strong>：了解 vLLM 最新架构改进</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <div class="callout-title">学习心法</div>
+    <ol>
+      <li><strong>先跑通再深究</strong>：先用起来，产生感性认识，再读论文和源码</li>
+      <li><strong>画图辅助理解</strong>：自己画一遍请求流程图、内存分配图，比读十遍文档有效</li>
+      <li><strong>对比学习</strong>：对比 vLLM 与 TGI、TensorRT-LLM、SGLang 的设计差异，理解不同 trade-off</li>
+      <li><strong>关注社区</strong>：vLLM 更新很快，关注 GitHub Discussions 和官方博客获取最新信息</li>
+    </ol>
+  </div>
+
+  <h3>推荐学习资源汇总</h3>
+
+  <table>
+    <thead>
+      <tr><th>类型</th><th>资源</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>论文</td><td>SOSP '23 PagedAttention 论文</td><td>vLLM 的理论基础，必读</td></tr>
+      <tr><td>官方文档</td><td>docs.vllm.ai</td><td>API 参考、设计文档、教程</td></tr>
+      <tr><td>源码</td><td>github.com/vllm-project/vllm</td><td>62k+ Star，社区活跃</td></tr>
+      <tr><td>博客</td><td>blog.vllm.ai</td><td>官方技术博客，深度解析</td></tr>
+      <tr><td>视频</td><td>vLLM 官方 YouTube 频道</td><td>作者亲自讲解核心设计</td></tr>
+      <tr><td>基准测试</td><td>vllm-project/vllm/benchmarks</td><td>标准基准测试脚本和结果</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ======================== SUMMARY ======================== -->
+<section>
+  <h2 class="section-title"><span class="num">★</span>核心要点总结</h2>
+
+  <table>
+    <thead>
+      <tr><th>组件</th><th>核心职责</th><th>关键创新</th><th>性能影响</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>KV Cache</strong></td>
+        <td>缓存已计算 token 的 K/V 向量，避免重复计算</td>
+        <td>将推理从 O(n²) 降为 O(n)</td>
+        <td>显存占用 ~30%，是优化的核心对象</td>
+      </tr>
+      <tr>
+        <td><strong>PagedAttention</strong></td>
+        <td>将 KV Cache 分成固定大小块，通过块表映射管理</td>
+        <td>OS 虚拟内存分页类比，非连续存储</td>
+        <td>显存利用率 20%→96%，支持更多并发</td>
+      </tr>
+      <tr>
+        <td><strong>Scheduler</strong></td>
+        <td>每步决定处理哪些请求，管理三大队列</td>
+        <td>连续批处理 + 抢占调度 + Chunked Prefill</td>
+        <td>吞吐量提升 3-10 倍，GPU 利用率 65%→92%</td>
+      </tr>
+      <tr>
+        <td><strong>Execution Engine</strong></td>
+        <td>在 GPU 上执行模型前向传播和采样</td>
+        <td>Executor→Worker→ModelRunner 三级架构 + CUDA Graph</td>
+        <td>Decode 延迟降低 20-40%，支持多 GPU 分布式</td>
+      </tr>
+      <tr>
+        <td><strong>API Server</strong></td>
+        <td>提供 OpenAI 兼容的 HTTP 接口</td>
+        <td>AsyncLLMEngine + 流式输出 + FastAPI</td>
+        <td>零代码迁移，直接替换 OpenAI API 调用</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <div class="callout-title">一句话理解 vLLM</div>
+    vLLM 通过 <strong>PagedAttention</strong>（让显存零浪费）+ <strong>连续批处理</strong>（让 GPU 零空闲）+ <strong>CUDA Graph</strong>（让内核启动零开销），实现了大语言模型推理的极致性能。它的设计哲学是：让每一比特显存、每一个计算周期都物尽其用。
+  </div>
+</section>
+
+<div class="footer">
+  <p>vLLM 系统架构深入分析指南 · 面向新手 · 由浅入深</p>
+  <p>基于 vLLM 论文 (SOSP '23) 及官方文档编写 · 2026</p>
+</div>
+
+</div>
+</body>
+</html>
