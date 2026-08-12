@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>vLLM 学习编排系统 — Round 1：建立整体认知</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --card-bg: #ffffff;
+    --text: #1a1a2e;
+    --text-secondary: #555;
+    --accent: #2563eb;
+    --accent-light: #dbeafe;
+    --green: #059669;
+    --green-light: #d1fae5;
+    --orange: #ea580c;
+    --orange-light: #fed7aa;
+    --purple: #7c3aed;
+    --purple-light: #ede9fe;
+    --red: #dc2626;
+    --red-light: #fee2e2;
+    --border: #e2e8f0;
+    --code-bg: #f1f5f9;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    font-size: 15px;
+  }
+  .container { max-width: 920px; margin: 0 auto; padding: 40px 24px 80px; }
+  .hero {
+    background: linear-gradient(135deg, #1a1a2e 0%, #2563eb 50%, #7c3aed 100%);
+    color: white; padding: 48px 40px; border-radius: 16px; margin-bottom: 40px;
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.15);
+  }
+  .hero h1 { font-size: 26px; margin-bottom: 10px; letter-spacing: -0.5px; }
+  .hero p { font-size: 14px; opacity: 0.9; max-width: 700px; }
+  .hero .badge {
+    display: inline-block; background: rgba(255,255,255,0.15); padding: 4px 14px;
+    border-radius: 20px; font-size: 12px; margin-bottom: 16px; backdrop-filter: blur(4px);
+  }
+  section {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 36px; margin-bottom: 28px; box-shadow: var(--shadow);
+  }
+  h2.section-title {
+    font-size: 20px; margin-bottom: 8px; padding-bottom: 12px;
+    border-bottom: 2px solid var(--accent-light); color: var(--text);
+  }
+  h2.section-title .num {
+    display: inline-block; background: var(--accent); color: white; width: 30px; height: 30px;
+    line-height: 30px; text-align: center; border-radius: 8px; font-size: 14px; margin-right: 10px;
+  }
+  h3 { font-size: 16px; margin-top: 24px; margin-bottom: 10px; color: var(--text); }
+  h4 { font-size: 14px; margin-top: 16px; margin-bottom: 8px; color: var(--text-secondary); }
+  p { margin-bottom: 12px; color: var(--text); }
+  ul, ol { margin-bottom: 12px; padding-left: 24px; }
+  li { margin-bottom: 5px; font-size: 14px; }
+  strong { color: var(--text); font-weight: 600; }
+  code {
+    font-family: "SF Mono", "Fira Code", Menlo, monospace; background: var(--code-bg);
+    padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #be185d;
+  }
+  pre {
+    background: #1e293b; color: #e2e8f0; padding: 18px 22px; border-radius: 8px;
+    overflow-x: auto; margin-bottom: 14px; font-size: 13px; line-height: 1.6;
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: 13px; }
+  .callout { border-left: 4px solid; padding: 14px 18px; margin-bottom: 14px; border-radius: 0 8px 8px 0; font-size: 14px; }
+  .callout-title { font-weight: 600; margin-bottom: 4px; }
+  .callout.tip { background: var(--green-light); border-color: var(--green); }
+  .callout.tip .callout-title { color: var(--green); }
+  .callout.warn { background: var(--orange-light); border-color: var(--orange); }
+  .callout.warn .callout-title { color: var(--orange); }
+  .callout.info { background: var(--accent-light); border-color: var(--accent); }
+  .callout.info .callout-title { color: var(--accent); }
+  .callout.note { background: var(--purple-light); border-color: var(--purple); }
+  .callout.note .callout-title { color: var(--purple); }
+  .callout.danger { background: var(--red-light); border-color: var(--red); }
+  .callout.danger .callout-title { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 13px; }
+  th { background: var(--accent-light); color: var(--text); padding: 8px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--accent); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8fafc; }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .tag-blue { background: var(--accent-light); color: var(--accent); }
+  .tag-green { background: var(--green-light); color: var(--green); }
+  .tag-orange { background: var(--orange-light); color: var(--orange); }
+  .tag-red { background: var(--red-light); color: var(--red); }
+  .tag-purple { background: var(--purple-light); color: var(--purple); }
+  .tag-gray { background: #e2e8f0; color: #555; }
+  .step-card { display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
+  .step-number {
+    flex-shrink: 0; width: 32px; height: 32px; background: var(--accent); color: white;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .step-content { flex: 1; }
+  .step-content h4 { margin-top: 0; color: var(--text); font-size: 14px; }
+  .step-content p { font-size: 13px; margin-bottom: 4px; }
+  .artifact-list { counter-reset: artifact; }
+  .artifact-list li { counter-increment: artifact; list-style: none; position: relative; padding-left: 28px; margin-bottom: 8px; }
+  .artifact-list li::before {
+    content: counter(artifact); position: absolute; left: 0; top: 2px;
+    width: 20px; height: 20px; background: var(--purple-light); color: var(--purple);
+    border-radius: 4px; font-size: 11px; font-weight: 700; display: flex;
+    align-items: center; justify-content: center;
+  }
+  .route-card {
+    border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-bottom: 12px;
+    background: #fafbfc;
+  }
+  .route-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .route-title { font-size: 14px; font-weight: 600; }
+  .route-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .route-body { font-size: 13px; color: var(--text); }
+  .route-body dt { font-weight: 600; font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+  .route-body dd { margin-left: 12px; font-size: 13px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .two-col > div { min-width: 0; }
+  .svg-wrap { text-align: center; margin: 20px 0; }
+  .svg-wrap svg { max-width: 100%; height: auto; }
+  .svg-caption { font-size: 12px; color: var(--text-secondary); margin-top: 6px; font-style: italic; }
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li { padding-left: 26px; position: relative; margin-bottom: 6px; font-size: 14px; }
+  .checklist li::before {
+    content: ""; position: absolute; left: 0; top: 4px; width: 16px; height: 16px;
+    border: 2px solid var(--accent); border-radius: 4px;
+  }
+  .question-card {
+    border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-bottom: 12px;
+    background: #fafbfc;
+  }
+  .question-num { font-weight: 700; color: var(--accent); font-size: 13px; margin-bottom: 4px; }
+  .question-text { font-size: 14px; margin-bottom: 8px; }
+  .question-options { font-size: 13px; color: var(--text-secondary); }
+  .question-options span { display: block; margin-bottom: 2px; padding-left: 12px; }
+  .question-purpose { font-size: 12px; color: var(--purple); margin-top: 6px; font-style: italic; }
+  .review-item { margin-bottom: 10px; padding: 10px 14px; background: #fef2f2; border-radius: 6px; font-size: 13px; }
+  .review-item strong { color: var(--red); }
+  @media (max-width: 640px) {
+    .container { padding: 20px 12px 60px; }
+    section { padding: 24px 16px; }
+    .hero { padding: 32px 20px; }
+    .hero h1 { font-size: 20px; }
+    .two-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ======================== HERO ======================== -->
+<div class="hero">
+  <span class="badge">Round 1 · 学习编排系统</span>
+  <h1>vLLM 深度学习编排 — 建立整体认知</h1>
+  <p>本系统以「概念理解 → 源码追踪 → 动手实验 → 性能分析 → 对抗性审查 → 知识检验」为闭环，面向有 C++/系统设计经验的工程师，通过 6 条学习路线、6 个阶段、逐轮验证的方式，确保每个知识点都能被解释、实验、定位和预测，而非仅仅"看过"或"运行成功"。</p>
+</div>
+
+<!-- ======================== 1. LEARNING MAP ======================== -->
+<section id="map">
+  <h2 class="section-title"><span class="num">1</span>整体学习地图</h2>
+
+  <p>vLLM 学习分为 <strong>6 条路线</strong>（知识维度）和 <strong>6 个阶段</strong>（时间维度）。每条路线独立追踪状态，各阶段逐层递进。</p>
+
+  <h3>6 条学习路线</h3>
+  <div class="two-col">
+    <div>
+      <div class="route-card">
+        <div class="route-header">
+          <span class="route-title">R1 · 用户与部署</span>
+          <span class="tag tag-blue">入门</span>
+        </div>
+        <div class="route-body">安装、启动、API 调用、参数配置、模型选择、离线 vs 在线推理</div>
+      </div>
+      <div class="route-card">
+        <div class="route-header">
+          <span class="route-title">R2 · 大模型推理基础</span>
+          <span class="tag tag-purple">前置</span>
+        </div>
+        <div class="route-body">Transformer 自注意力、Q/K/V、KV Cache、Prefill/Decode 两阶段、自回归生成</div>
+      </div>
+      <div class="route-card">
+        <div class="route-header">
+          <span class="route-title">R3 · vLLM 核心机制</span>
+          <span class="tag tag-green">核心</span>
+        </div>
+        <div class="route-body">PagedAttention、Continuous Batching、Prefix Caching、Chunked Prefill、Speculative Decoding</div>
+      </div>
+    </div>
+    <div>
+      <div class="route-card">
+        <div class="route-header">
+          <span class="route-title">R4 · 架构与源码</span>
+          <span class="tag tag-orange">深入</span>
+        </div>
+        <div class="route-body">LLMEngine、Scheduler、BlockManager、Executor、Worker、ModelRunner、请求生命周期</div>
+      </div>
+      <div class="route-card">
+        <div class="route-header">
+          <span class="route-title">R5 · 性能工程</span>
+          <span class="tag tag-red">进阶</span>
+        </div>
+        <div class="route-body">吞吐量/延迟分析、GPU 利用率、显存管理、benchmark 设计、瓶颈定位、调优参数</div>
+      </div>
+      <div class="route-card">
+        <div class="route-header">
+          <span class="route-title">R6 · 分布式与生产部署</span>
+          <span class="tag tag-gray">高级</span>
+        </div>
+        <div class="route-body">张量并行、流水线并行、多 GPU/多节点、高可用、监控告警、容量规划</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>6 个学习阶段</h3>
+  <table>
+    <thead>
+      <tr><th>阶段</th><th>主题</th><th>核心目标</th><th>涉及路线</th><th>预计时长</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>P1</strong></td>
+        <td>建立整体认识</td>
+        <td>理解 vLLM 解决什么问题、能做什么、与 HuggingFace 的区别；完成安装和首次推理</td>
+        <td>R1, R2</td>
+        <td>1-2 小时</td>
+      </tr>
+      <tr>
+        <td><strong>P2</strong></td>
+        <td>补齐推理基础</td>
+        <td>深入理解 Transformer 推理过程、KV Cache 原理、Prefill/Decode 差异</td>
+        <td>R2</td>
+        <td>2-3 小时</td>
+      </tr>
+      <tr>
+        <td><strong>P3</strong></td>
+        <td>学习核心机制</td>
+        <td>掌握 PagedAttention、Continuous Batching、Prefix Caching 的设计动机与工作原理</td>
+        <td>R3, R4</td>
+        <td>4-6 小时</td>
+      </tr>
+      <tr>
+        <td><strong>P4</strong></td>
+        <td>源码追踪</td>
+        <td>从请求入口到 GPU 执行的完整调用链、关键类和函数定位</td>
+        <td>R4</td>
+        <td>4-6 小时</td>
+      </tr>
+      <tr>
+        <td><strong>P5</strong></td>
+        <td>性能与诊断</td>
+        <td>benchmark 设计、性能指标解读、常见 OOM/延迟问题诊断</td>
+        <td>R5</td>
+        <td>3-4 小时</td>
+      </tr>
+      <tr>
+        <td><strong>P6</strong></td>
+        <td>生产部署与综合项目</td>
+        <td>多 GPU 部署、高可用架构、综合性能调优项目</td>
+        <td>R5, R6</td>
+        <td>4-8 小时</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <div class="callout-title">推进规则</div>
+    每个阶段完成后需通过掌握度测试才能进入下一阶段。掌握标准：不看资料解释关键概念、画出关键数据流、预测参数变化影响、设计验证实验、定位相关源码、识别常见错误结论。<strong>"看过""听懂了""运行成功"不能单独作为掌握证据。</strong>
+  </div>
+</section>
+
+<!-- ======================== 2. DIAGNOSTIC TEST ======================== -->
+<section id="diagnostic">
+  <h2 class="section-title"><span class="num">2</span>诊断测试（8 题）</h2>
+
+  <p>以下问题用于评估你的当前知识水平，帮助确定学习起点和侧重点。请诚实作答——答错不会扣分，只会帮你找到正确的起点。</p>
+
+  <div class="question-card">
+    <div class="question-num">Q1 · 自注意力基础</div>
+    <div class="question-text">在 Transformer 自注意力机制中，Query (Q)、Key (K)、Value (V) 三个矩阵分别扮演什么角色？请用自己的话解释 Attention(Q, K, V) = softmax(QK^T / √d_k) V 的含义。</div>
+    <div class="question-purpose">→ 考察：R2 前置基础。如果完全陌生，需要先补充 Transformer 基础；如果能描述但无法解释缩放因子 √d_k 的作用，说明有基础但不够深入。</div>
+  </div>
+
+  <div class="question-card">
+    <div class="question-num">Q2 · 推理两阶段</div>
+    <div class="question-text">LLM 推理分为 Prefill 和 Decode 两个阶段。它们各自的计算特征是什么（compute-bound 还是 memory-bound）？为什么 Decode 阶段的 GPU 利用率通常远低于 Prefill？</div>
+    <div class="question-purpose">→ 考察：R2 核心概念 + R5 性能直觉。能区分两个阶段说明有推理基础；能解释 GPU 利用率差异说明有性能工程思维。</div>
+  </div>
+
+  <div class="question-card">
+    <div class="question-num">Q3 · KV Cache</div>
+    <div class="question-text">什么是 KV Cache？它为什么存在？对于一个 70B 参数的模型处理 4K 上下文，KV Cache 大约需要多少显存？（提示：LLaMA-70B 有 80 层、8 个 KV head、head_size=128，使用 bf16）</div>
+    <div class="question-purpose">→ 考察：R2 核心概念 + 定量估算能力。能给出公式或数量级估算即可；如果完全不知道 KV Cache 是什么，需要从 P2 开始。</div>
+  </div>
+
+  <div class="question-card">
+    <div class="question-num">Q4 · 系统思维</div>
+    <div class="question-text">在 C++ 中，如果你需要管理大量不同大小的内存块（有的 100 字节、有的 10KB），且频繁分配/释放，你会如何避免内存碎片？你会考虑使用什么数据结构或策略？</div>
+    <div class="question-purpose">→ 考察：系统设计背景（学习者声称有 C++ 经验）。如果你能想到 slab allocator、内存池、伙伴系统等，说明有理解 PagedAttention 设计动机的基础。</div>
+  </div>
+
+  <div class="question-card">
+    <div class="question-num">Q5 · 并发与批处理</div>
+    <div class="question-text">假设你有一个 HTTP 服务器处理推理请求。如果请求 A 需要 5 秒、请求 B 需要 1 秒，静态批处理（等 batch 中最长请求完成才释放资源）会造成什么问题？你会如何改进？</div>
+    <div class="question-purpose">→ 考察：并发系统设计思维。能想到 head-of-line blocking、动态调度等概念，说明有理解 Continuous Batching 动机的基础。</div>
+  </div>
+
+  <div class="question-card">
+    <div class="question-num">Q6 · GPU 基础</div>
+    <div class="question-text">你是否有可用的 GPU？如果有，请提供：GPU 型号、显存大小、CUDA 版本。如果没有独立 GPU，你是否了解如何在无 GPU 环境下运行量化后的小模型？</div>
+    <div class="question-purpose">→ 考察：实验环境评估。决定后续实验是真实运行还是用日志/伪实验替代。</div>
+  </div>
+
+  <div class="question-card">
+    <div class="question-num">Q7 · vLLM 初步认知</div>
+    <div class="question-text">你是否听说过 PagedAttention？如果有，请描述你认为它解决什么问题。如果没有，请跳过。</div>
+    <div class="question-purpose">→ 考察：R3 核心机制的先验知识。如果有初步了解但无法解释为什么传统方法浪费内存，说明需要系统学习。</div>
+  </div>
+
+  <div class="question-card">
+    <div class="question-num">Q8 · 性能分析经验</div>
+    <div class="question-text">在之前的工作中，你是否做过性能 benchmark？如果有，你是如何控制变量的？你认为测量 GPU 推理性能时最容易犯的错误是什么？</div>
+    <div class="question-purpose">→ 考察：R5 性能工程经验。能提到预热、多次测量取平均、控制变量等概念，说明有较好的实验素养。</div>
+  </div>
+
+  <div class="callout tip">
+    <div class="callout-title">作答建议</div>
+    请尽量详细作答，特别是 Q1-Q3 和 Q7。你的回答将决定 Round 2 的起点和内容侧重。如果不确定答案，写下你的直觉猜测并标注"不确定"——这比跳过更有价值。
+  </div>
+</section>
+
+<!-- ======================== 3. ROUND 1 ======================== -->
+<section id="round1">
+  <h2 class="section-title"><span class="num">3</span>Round 1 学习单元（60-90 分钟）</h2>
+
+  <!-- 3.1 本轮主题 -->
+  <h3>① 本轮主题</h3>
+  <p><strong>建立 vLLM 整体认知 + 环境搭建 + 首次推理体验 + 与 HuggingFace 对比</strong></p>
+  <p>本轮目标不是深入任何单一机制，而是建立「vLLM 是什么 → 解决什么问题 → 我能跑起来 → 它和朴素方法有什么区别」的完整认知闭环。</p>
+
+  <!-- 3.2 学习目标 -->
+  <h3>② 学习目标</h3>
+  <ul>
+    <li>能用自己的话解释 vLLM 解决的三个核心问题（KV Cache 显存浪费、静态批处理低效、内存碎片）</li>
+    <li>能完成 vLLM 安装并成功运行首次推理</li>
+    <li>能通过 <code>nvidia-smi</code> 观察推理过程中的 GPU 显存变化</li>
+    <li>能说出 vLLM 与 HuggingFace Transformers 推理的两个关键差异（不要求深入原理）</li>
+    <li>建立 6 条学习路线登记表，标注每条路线的初始状态</li>
+  </ul>
+
+  <!-- 3.3 前置知识检查 -->
+  <h3>③ 前置知识检查</h3>
+  <p>在开始之前，请确认你具备以下基础：</p>
+  <table>
+    <thead>
+      <tr><th>前置知识</th><th>需要程度</th><th>快速自测</th><th>不足时怎么办</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Python 基础（pip、虚拟环境）</td><td><span class="tag tag-red">必需</span></td><td>能创建 venv 并安装包</td><td>暂停，先学 Python 环境管理</td></tr>
+      <tr><td>Transformer 基础概念</td><td><span class="tag tag-orange">建议</span></td><td>知道 attention 是"注意"机制</td><td>可先看本指南第 3 章前置基础</td></tr>
+      <tr><td>GPU / CUDA 基本概念</td><td><span class="tag tag-blue">有帮助</span></td><td>知道 GPU 有显存、CUDA 是计算平台</td><td>不影响本轮，后续实验时补充</td></tr>
+      <tr><td>Linux 命令行</td><td><span class="tag tag-orange">建议</span></td><td>能使用 nvidia-smi、pip install</td><td>可在 Windows/macOS 上用替代命令</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 3.4 核心解释 -->
+  <h3>④ 核心解释</h3>
+  <p><strong>vLLM 解决的核心问题</strong>可以用一句话概括：</p>
+  <div class="callout note">
+    <div class="callout-title">一句话定义</div>
+    vLLM 是一个高吞吐 LLM 推理引擎，通过 PagedAttention（分页管理 KV Cache）和 Continuous Batching（连续批处理），将 GPU 推理吞吐量提升 2-24 倍。
+  </div>
+
+  <p>为什么不用 HuggingFace Transformers 直接推理？三个原因：</p>
+  <ol>
+    <li><strong>KV Cache 显存浪费</strong>：传统方法为每个请求预分配最大长度的连续内存。当请求实际长度远小于最大长度时，大量显存被浪费（利用率仅 20-38%）。</li>
+    <li><strong>静态批处理低效</strong>：传统方法把多个请求打包成一个 batch，必须等最长请求完成才能释放资源。短请求被迫"陪跑"，GPU 大量时间空闲。</li>
+    <li><strong>内存碎片</strong>：请求长度不一导致频繁的分配/释放，产生大量不连续的空闲块，进一步降低可用显存。</li>
+  </ol>
+
+  <p>vLLM 的两个核心创新直接对应前两个问题：<strong>PagedAttention</strong> 借鉴 OS 虚拟内存分页思想，将 KV Cache 切分为固定大小的块按需分配；<strong>Continuous Batching</strong> 在每个 token 生成步骤重新决定 batch 组成，完成的请求立即退出、新请求立即补位。</p>
+
+  <!-- 3.5 请求流程/架构关系 -->
+  <h3>⑤ 请求流程 / 架构关系</h3>
+  <p>vLLM 的分层架构（从用户请求到 GPU 执行的简化视图）：</p>
+
+  <div class="svg-wrap">
+    <svg viewBox="0 0 720 340" xmlns="http://www.w3.org/2000/svg">
+      <rect width="720" height="340" fill="#f8fafc" rx="12"/>
+      <text x="360" y="28" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a2e">vLLM 请求处理简化流程</text>
+      <defs>
+        <marker id="r1a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+      </defs>
+
+      <rect x="40" y="50" width="200" height="50" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="0.5"/>
+      <text x="140" y="70" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#1e40af">用户请求</text>
+      <text x="140" y="88" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#1e40af">HTTP / Python API</text>
+
+      <line x1="240" y1="75" x2="270" y2="75" stroke="#888780" stroke-width="1.5" marker-end="url(#r1a)"/>
+
+      <rect x="275" y="50" width="200" height="50" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.5"/>
+      <text x="375" y="70" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#5b21b6">LLMEngine</text>
+      <text x="375" y="88" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#5b21b6">请求管理 · 迭代循环</text>
+
+      <line x1="475" y1="75" x2="505" y2="75" stroke="#888780" stroke-width="1.5" marker-end="url(#r1a)"/>
+
+      <rect x="510" y="50" width="170" height="50" rx="8" fill="#fed7aa" stroke="#ea580c" stroke-width="0.5"/>
+      <text x="595" y="70" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#9a3412">Scheduler</text>
+      <text x="595" y="88" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#9a3412">决定谁可以执行</text>
+
+      <line x1="595" y1="100" x2="595" y2="120" stroke="#888780" stroke-width="1.5" marker-end="url(#r1a)"/>
+
+      <rect x="510" y="124" width="170" height="50" rx="8" fill="#d1fae5" stroke="#059669" stroke-width="0.5"/>
+      <text x="595" y="144" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#065f46">Block Manager</text>
+      <text x="595" y="162" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#065f46">分配 KV Cache 块</text>
+
+      <line x1="510" y1="149" x2="440" y2="149" stroke="#888780" stroke-width="1.5" marker-end="url(#r1a)"/>
+
+      <rect x="260" y="124" width="175" height="50" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="0.5"/>
+      <text x="347" y="144" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#92400e">Executor → Worker</text>
+      <text x="347" y="162" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#92400e">GPU 前向传播</text>
+
+      <line x1="260" y1="149" x2="140" y2="149" stroke="#888780" stroke-width="1.5" marker-end="url(#r1a)"/>
+
+      <rect x="40" y="124" width="95" height="50" rx="8" fill="#fce7f3" stroke="#be185d" stroke-width="0.5"/>
+      <text x="87" y="144" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#831843">输出</text>
+      <text x="87" y="162" text-anchor="middle" dominant-baseline="central" font-size="10" fill="#831843">token 流</text>
+
+      <!-- Loop annotation -->
+      <path d="M87 174 Q 87 210 375 210 Q 595 210 595 174" fill="none" stroke="#be185d" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#r1a)"/>
+      <text x="360" y="225" text-anchor="middle" font-size="11" fill="#831843">循环：每生成 1 个 token 重复一次（Continuous Batching）</text>
+
+      <!-- Key components -->
+      <rect x="40" y="248" width="640" height="76" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.5"/>
+      <text x="60" y="268" dominant-baseline="central" font-size="13" font-weight="500" fill="#1a1a2e">关键组件速查</text>
+      <text x="60" y="288" dominant-baseline="central" font-size="11" fill="#2563eb">LLMEngine: 引擎核心，协调请求管理、输出处理、迭代循环</text>
+      <text x="60" y="304" dominant-baseline="central" font-size="11" fill="#9a3412">Scheduler: 三大队列（Running/Waiting/Swapped），每步决定 batch 组成</text>
+      <text x="60" y="320" dominant-baseline="central" font-size="11" fill="#065f46">BlockManager: PagedAttention 的内存管理器，按需分配/释放 KV Cache 块</text>
+    </svg>
+    <div class="svg-caption">图 1-1：vLLM 请求处理简化流程——请求经 LLMEngine 到 Scheduler 再到 Worker 执行，每步循环</div>
+  </div>
+
+  <!-- 3.6 最小示例 -->
+  <h3>⑥ 最小示例</h3>
+  <p>以下是 vLLM 最简单的使用方式——离线推理（无需启动服务器）：</p>
+
+  <pre><code>from vllm import LLM, SamplingParams
+
+# 初始化模型（首次运行会自动下载）
+llm = LLM(model="Qwen/Qwen2.5-0.5B-Instruct")
+
+# 设置采样参数
+sampling_params = SamplingParams(
+    temperature=0.7,
+    top_p=0.9,
+    max_tokens=128
+)
+
+# 推理
+prompts = [
+    "Explain what PagedAttention is in one sentence.",
+    "What is continuous batching?",
+]
+outputs = llm.generate(prompts, sampling_params)
+
+for output in outputs:
+    print(f"Prompt: {output.prompt}")
+    print(f"Generated: {output.outputs[0].text}")
+    print(f"Tokens: {len(output.outputs[0].token_ids)}")
+    print("---")</code></pre>
+
+  <!-- 3.7 动手实验 -->
+  <h3>⑦ 动手实验</h3>
+  <p><strong>实验 1-A：安装与首次推理</strong>（预计 20-30 分钟，含模型下载）</p>
+
+  <div class="step-card">
+    <div class="step-number">1</div>
+    <div class="step-content">
+      <h4>创建虚拟环境并安装 vLLM</h4>
+      <pre><code>python -m venv vllm-env
+source vllm-env/bin/activate  # Linux/macOS
+pip install vllm</code></pre>
+      <p>⚠️ 需要 Python 3.9+ 和 CUDA 12.1+。如果是 macOS（Apple Silicon），vLLM 支持有限，建议用 Linux + NVIDIA GPU。</p>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">2</div>
+    <div class="step-content">
+      <h4>运行最小示例</h4>
+      <p>将上面的最小示例保存为 <code>first_inference.py</code> 并运行：</p>
+      <pre><code>python first_inference.py</code></pre>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">3</div>
+    <div class="step-content">
+      <h4>观察 GPU 显存（另一个终端）</h4>
+      <pre><code>watch -n 1 nvidia-smi</code></pre>
+      <p>注意观察：模型加载后显存基线、推理时显存峰值、推理结束后显存是否回落。</p>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">4</div>
+    <div class="step-content">
+      <h4>对比实验：用 HuggingFace 做同样推理</h4>
+      <pre><code>pip install transformers torch
+
+python -c "
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+
+model = AutoModelForCausalLM.from_pretrained(
+    'Qwen/Qwen2.5-0.5B-Instruct',
+    torch_dtype=torch.bfloat16,
+    device_map='auto'
+)
+tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-0.5B-Instruct')
+
+inputs = tokenizer('Explain PagedAttention in one sentence.', return_tensors='pt').to(model.device)
+outputs = model.generate(**inputs, max_new_tokens=128)
+print(tokenizer.decode(outputs[0], skip_special_tokens=True))
+"</code></pre>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-number">5</div>
+    <div class="step-content">
+      <h4>记录对比结果</h4>
+      <p>创建一个简单表格记录两种方式的：启动时间、推理时间、GPU 显存峰值、显存是否回落。</p>
+    </div>
+  </div>
+
+  <!-- 3.8 运行前预测 -->
+  <h3>⑧ 运行前预测</h3>
+  <p>在运行实验之前，请先写下你的预测：</p>
+  <table>
+    <thead>
+      <tr><th>预测项</th><th>你的预测</th><th>实际结果（运行后填写）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>vLLM 模型加载后显存占用</td><td>___ GB</td><td>___ GB</td></tr>
+      <tr><td>vLLM 推理时显存峰值</td><td>___ GB</td><td>___ GB</td></tr>
+      <tr><td>HF 推理时显存峰值</td><td>___ GB</td><td>___ GB</td></tr>
+      <tr><td>vLLM 生成 128 tokens 的时间</td><td>___ 秒</td><td>___ 秒</td></tr>
+      <tr><td>HF 生成 128 tokens 的时间</td><td>___ 秒</td><td>___ 秒</td></tr>
+      <tr><td>vLLM 推理结束后显存是否回落</td><td>是 / 否</td><td>是 / 否</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <div class="callout-title">为什么要求先预测？</div>
+    预测是学习闭环中最关键的环节之一。如果你的预测与实际结果差距很大，说明你的心智模型存在偏差——这正是最有价值的学习信号。<strong>先预测再验证</strong>，比直接看结果的学习效果高 3-5 倍。
+  </div>
+
+  <!-- 3.9 结果分析方法 -->
+  <h3>⑨ 结果分析方法</h3>
+  <p>运行实验后，按以下步骤分析结果：</p>
+  <ol>
+    <li><strong>对比预测与实际</strong>：哪些预测准确？哪些偏差大？偏差大说明什么？</li>
+    <li><strong>观察显存曲线</strong>：vLLM 的显存占用有什么特征？为什么推理结束后显存不回落？（提示：vLLM 预分配了整个 KV Cache 块池）</li>
+    <li><strong>对比推理速度</strong>：哪种方式更快？差异有多大？（注意：单次对比可能受模型下载/缓存影响，不代表真实性能差异）</li>
+    <li><strong>检查输出质量</strong>：两种方式生成的内容是否一致？为什么可能不同？</li>
+  </ol>
+
+  <div class="callout info">
+    <div class="callout-title">注意：本轮实验的局限</div>
+    单请求、小模型（0.5B）、短序列——这些条件几乎无法体现 vLLM 的优势。vLLM 的 PagedAttention 和 Continuous Batching 在<strong>多并发、大模型、长序列</strong>场景下才能展现威力。本轮实验的目的是「跑通流程 + 建立直觉」，不是性能对比。真正的性能实验将在 Round 5 进行。
+  </div>
+
+  <!-- 3.10 关键源码入口 -->
+  <h3>⑩ 关键源码入口</h3>
+  <p>本轮不需要深入源码，但建议你先浏览以下入口文件，建立对代码结构的初步印象：</p>
+  <table>
+    <thead>
+      <tr><th>文件路径</th><th>作用</th><th>本轮关注点</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>vllm/entrypoints/llm.py</code></td><td>离线推理入口（LLM 类）</td><td><code>LLM.__init__()</code> 和 <code>LLM.generate()</code> 的签名和文档字符串</td></tr>
+      <tr><td><code>vllm/engine/llm_engine.py</code></td><td>引擎核心</td><td><code>LLMEngine</code> 类的初始化参数列表（能看到所有可配置项）</td></tr>
+      <tr><td><code>vllm/engine/arg_utils.py</code></td><td>引擎参数定义</td><td><code>EngineArgs</code> 中所有可配置参数及其默认值</td></tr>
+    </tbody>
+  </table>
+  <p><strong>方法</strong>：在 GitHub 上搜索 vllm 仓库，直接浏览上述文件。<strong>不需要理解所有代码</strong>，只需要知道它们在哪里、大概长什么样。后续 Round 会逐一深入。</p>
+
+  <!-- 3.11 常见误区 -->
+  <h3>⑪ 常见误区</h3>
+
+  <div class="review-item">
+    <strong>误区 1：vLLM 推理一定比 HuggingFace 快</strong><br>
+    在单请求、小模型、短序列场景下，vLLM 的初始化开销可能使其更慢。vLLM 的优势在多并发、大模型、长序列场景。<strong>判断依据</strong>：不能只看单次延迟，要看吞吐量和资源利用率。
+  </div>
+
+  <div class="review-item">
+    <strong>误区 2：显存占用越低越好</strong><br>
+    vLLM 会预分配大量显存作为 KV Cache 块池，启动后显存占用可能比 HuggingFace 更高。这不是 bug——预分配避免了运行时的动态分配开销，是实现高吞吐的关键设计。<strong>判断依据</strong>：关注吞吐量而非显存占用绝对值。
+  </div>
+
+  <div class="review-item">
+    <strong>误区 3：PagedAttention 是操作系统功能</strong><br>
+    PagedAttention 借鉴了 OS 虚拟内存的思想，但它是 vLLM 在 GPU 上实现的 CUDA 内核级别的注意力计算方式，与操作系统无关。<strong>判断依据</strong>：它运行的是自定义 CUDA kernel，不是 malloc/mmap。
+  </div>
+
+  <div class="review-item">
+    <strong>误区 4：Continuous Batching 就是"一次处理更多请求"</strong><br>
+    Continuous Batching 的核心不是 batch size 大，而是 batch 组成可以在每个 token 步骤动态变化——完成的请求退出、新请求补位。这与简单地增大静态 batch size 完全不同。<strong>判断依据</strong>：看 batch 成员是否在每步变化。
+  </div>
+
+  <!-- 3.12 对抗性审查 -->
+  <h3>⑫ 对抗性审查</h3>
+  <p>在完成本轮学习后，请用以下问题审查自己的理解。每个问题都旨在暴露常见的认知偏差：</p>
+
+  <div class="review-item">
+    <strong>审查 1：概念偷换</strong><br>
+    你说"vLLM 更快"——你指的是单请求延迟更低，还是吞吐量更高？这两个指标在什么场景下可能一个升一个降？<strong>所需证据</strong>：在相同硬件上，分别测量两种引擎的单请求延迟和多并发吞吐量。
+  </div>
+
+  <div class="review-item">
+    <strong>审查 2：因果颠倒</strong><br>
+    你观察到 vLLM 启动后显存占用高——你认为是 vLLM "更耗显存"。但有没有可能是 vLLM 预分配了 KV Cache 空间，而 HuggingFace 是按需分配？这两种策略各自的优缺点是什么？<strong>所需证据</strong>：用 <code>nvidia-smi</code> 观察两种引擎在推理前、推理中、推理后的显存曲线。
+  </div>
+
+  <div class="review-item">
+    <strong>审查 3：忽略变量</strong><br>
+    如果你的实验显示 vLLM 更快，你是否控制了以下变量：模型是否相同、精度是否一致（bf16 vs fp16）、输入长度是否一致、输出长度是否一致、是否预热、GPU 是否独占？<strong>所需证据</strong>：列出所有实验条件，确认除引擎外无其他变量。
+  </div>
+
+  <div class="review-item">
+    <strong>审查 4：版本混淆</strong><br>
+    vLLM 的 V0 和 V1 架构在调度器、输出处理等方面有显著差异。你阅读的文档/教程是针对哪个版本的？<strong>所需证据</strong>：检查文档发布日期和对应的 vLLM 版本号，确认是否为当前稳定版。
+  </div>
+
+  <!-- 3.13 掌握度测试 -->
+  <h3>⑬ 掌握度测试</h3>
+  <p>完成本轮学习和实验后，请在不看资料的情况下回答以下问题：</p>
+
+  <div class="question-card">
+    <div class="question-num">T1</div>
+    <div class="question-text">用一句话向没有 ML 背景的同事解释：为什么 HuggingFace Transformers 直接推理大模型效率低？vLLM 是怎么解决的？（不要超过 3 句话）</div>
+  </div>
+  <div class="question-card">
+    <div class="question-num">T2</div>
+    <div class="question-text">画出 vLLM 从用户请求到 GPU 执行的简化数据流图。标注至少 4 个关键组件及其职责。</div>
+  </div>
+  <div class="question-card">
+    <div class="question-num">T3</div>
+    <div class="question-text">如果你把 <code>gpu_memory_utilization</code> 从默认的 0.9 改为 0.5，你预测会发生什么？为什么？</div>
+  </div>
+
+  <div class="callout tip">
+    <div class="callout-title">通过标准</div>
+    T1 能准确说出至少两个核心问题（KV Cache 浪费 + 静态批处理低效）；T2 能画出 LLMEngine → Scheduler → BlockManager → Worker 的流向；T3 能预测 KV Cache 块池变小、可并发请求减少。三题全部通过才可进入 Round 2。
+  </div>
+
+  <!-- 3.14 学习路线状态更新 -->
+  <h3>⑭ 学习路线状态更新 + 下一步任务</h3>
+  <p>完成本轮后，请更新以下登记表：</p>
+</section>
+
+<!-- ======================== 4. ROUTE REGISTRY ======================== -->
+<section id="registry">
+  <h2 class="section-title"><span class="num">4</span>学习路线登记表</h2>
+
+  <p>以下是 6 条路线的初始状态。完成每轮学习后，更新对应路线的状态和证据。</p>
+
+  <div class="route-card">
+    <div class="route-header">
+      <span class="route-title">R1 · 用户与部署</span>
+      <span class="tag tag-blue">Round 1 → 学习中</span>
+    </div>
+    <dl class="route-body">
+      <dt>学习目标</dt><dd>能安装、启动、调用 vLLM，理解关键配置参数的影响</dd>
+      <dt>已掌握</dt><dd>（待填写：安装完成 / 首次推理成功 / 参数理解...）</dd>
+      <dt>尚未理解</dt><dd>（待填写）</dd>
+      <dt>关键证据</dt><dd>（待填写：实验截图、运行日志、预测 vs 实际对比表）</dd>
+      <dt>可运行实验</dt><dd>实验 1-A（安装 + 首次推理 + HF 对比）</dd>
+      <dt>阻塞原因</dt><dd>无（如无 GPU，标记"环境受限"并跳转替代方案）</dd>
+      <dt>下一步</dt><dd>Round 2：vLLM 启动参数详解与 API Server 模式</dd>
+    </dl>
+  </div>
+
+  <div class="route-card">
+    <div class="route-header">
+      <span class="route-title">R2 · 大模型推理基础</span>
+      <span class="tag tag-orange">Round 1 → 未开始</span>
+    </div>
+    <dl class="route-body">
+      <dt>学习目标</dt><dd>能解释 Q/K/V、KV Cache、Prefill/Decode 的原理和计算特征，能定量估算 KV Cache 大小</dd>
+      <dt>已掌握</dt><dd>（待填写：根据诊断测试 Q1-Q3 结果更新）</dd>
+      <dt>尚未理解</dt><dd>（待填写）</dd>
+      <dt>关键证据</dt><dd>（待填写）</dd>
+      <dt>可运行实验</dt><dd>（Round 2 规划：手动计算 KV Cache 大小并验证）</dd>
+      <dt>阻塞原因</dt><dd>无</dd>
+      <dt>下一步</dt><dd>Round 2：Transformer 推理机制深入</dd>
+    </dl>
+  </div>
+
+  <div class="route-card">
+    <div class="route-header">
+      <span class="route-title">R3 · vLLM 核心机制</span>
+      <span class="tag tag-gray">未开始</span>
+    </div>
+    <dl class="route-body">
+      <dt>学习目标</dt><dd>能解释 PagedAttention、Continuous Batching、Prefix Caching 的设计动机、工作原理和边界条件</dd>
+      <dt>已掌握</dt><dd>—</dd>
+      <dt>尚未理解</dt><dd>全部</dd>
+      <dt>关键证据</dt><dd>—</dd>
+      <dt>可运行实验</dt><dd>（Round 3-4 规划）</dd>
+      <dt>阻塞原因</dt><dd>依赖 R2 完成</dd>
+      <dt>下一步</dt><dd>等待 R2 完成后启动</dd>
+    </dl>
+  </div>
+
+  <div class="route-card">
+    <div class="route-header">
+      <span class="route-title">R4 · 架构与源码</span>
+      <span class="tag tag-gray">未开始</span>
+    </div>
+    <dl class="route-body">
+      <dt>学习目标</dt><dd>能从 HTTP 请求追踪到 GPU kernel 的完整调用链，定位关键类和函数</dd>
+      <dt>已掌握</dt><dd>—</dd>
+      <dt>尚未理解</dt><dd>全部</dd>
+      <dt>关键证据</dt><dd>—</dd>
+      <dt>可运行实验</dt><dd>（Round 4-5 规划）</dd>
+      <dt>阻塞原因</dt><dd>依赖 R3 完成</dd>
+      <dt>下一步</dt><dd>等待 R3 完成后启动</dd>
+    </dl>
+  </div>
+
+  <div class="route-card">
+    <div class="route-header">
+      <span class="route-title">R5 · 性能工程</span>
+      <span class="tag tag-gray">未开始</span>
+    </div>
+    <dl class="route-body">
+      <dt>学习目标</dt><dd>能设计控制变量 benchmark、解读吞吐量/延迟/GPU 利用率、诊断 OOM 和性能瓶颈</dd>
+      <dt>已掌握</dt><dd>—</dd>
+      <dt>尚未理解</dt><dd>全部</dd>
+      <dt>关键证据</dt><dd>—</dd>
+      <dt>可运行实验</dt><dd>（Round 5-6 规划）</dd>
+      <dt>阻塞原因</dt><dd>依赖 R1, R3 完成</dd>
+      <dt>下一步</dt><dd>等待 R1, R3 完成后启动</dd>
+    </dl>
+  </div>
+
+  <div class="route-card">
+    <div class="route-header">
+      <span class="route-title">R6 · 分布式与生产部署</span>
+      <span class="tag tag-gray">未开始</span>
+    </div>
+    <dl class="route-body">
+      <dt>学习目标</dt><dd>能部署多 GPU 推理集群、配置高可用、做容量规划和监控告警</dd>
+      <dt>已掌握</dt><dd>—</dd>
+      <dt>尚未理解</dt><dd>全部</dd>
+      <dt>关键证据</dt><dd>—</dd>
+      <dt>可运行实验</dt><dd>（Round 6 规划）</dd>
+      <dt>阻塞原因</dt><dd>依赖 R4, R5 完成；可能需要多 GPU 环境</dd>
+      <dt>下一步</dt><dd>等待 R4, R5 完成后启动</dd>
+    </dl>
+  </div>
+</section>
+
+<!-- ======================== 5. COMPLETION CRITERIA ======================== -->
+<section id="criteria">
+  <h2 class="section-title"><span class="num">5</span>本轮完成标准</h2>
+
+  <p>以下所有项完成后，Round 1 才算结束。任何一项未完成，都说明存在需要解决的问题。</p>
+
+  <ul class="checklist">
+    <li>诊断测试 8 题已作答，已根据答案调整学习起点</li>
+    <li>vLLM 安装成功，能运行 <code>first_inference.py</code> 并看到输出</li>
+    <li>已通过 <code>nvidia-smi</code> 观察到 GPU 显存变化（或已记录无法观察的原因）</li>
+    <li>已完成 HuggingFace 对比实验并记录结果</li>
+    <li>已填写预测 vs 实际对比表，并分析了偏差原因</li>
+    <li>已浏览至少 2 个关键源码入口文件（LLM 类 + LLMEngine 或 EngineArgs）</li>
+    <li>掌握度测试 T1-T3 全部通过（不看资料回答）</li>
+    <li>6 条学习路线登记表已更新（R1 和 R2 的状态和证据已填写）</li>
+    <li>能说出至少 2 个本轮学到的常见误区，并解释为什么是误区</li>
+  </ul>
+
+  <div class="callout danger">
+    <div class="callout-title">如果某项无法完成</div>
+    请明确记录阻塞原因（缺少 GPU / 安装失败 / 概念不理解 / 时间不足），并在下一轮开始时优先解决。<strong>不要跳过阻塞项直接标记"已完成"</strong>——伪进展比不进展更有害。
+  </div>
+</section>
+
+<!-- ======================== 6. ADVERSARIAL FRAMEWORK ======================== -->
+<section id="adversarial">
+  <h2 class="section-title"><span class="num">6</span>对抗性审查框架（每轮通用）</h2>
+
+  <p>每轮学习完成后，用以下 13 个审查维度检查自己的理解。这些维度专门针对 vLLM 学习中最常见的认知偏差设计：</p>
+
+  <table>
+    <thead>
+      <tr><th>#</th><th>审查维度</th><th>典型错误</th><th>正确做法</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>概念偷换</td><td>把"吞吐量高"说成"速度快"，把"显存预分配"说成"更耗显存"</td><td>明确区分吞吐量/延迟/显存占用三个独立指标</td></tr>
+      <tr><td>2</td><td>因果颠倒</td><td>认为 PagedAttention 是因为"显存不够"才发明的</td><td>PagedAttention 解决的是显存<strong>利用率</strong>问题，不是显存总量问题</td></tr>
+      <tr><td>3</td><td>相关性当因果性</td><td>观察到 vLLM 快就归因于 PagedAttention</td><td>vLLM 的性能提升来自多个机制的组合，需要控制变量实验</td></tr>
+      <tr><td>4</td><td>忽略关键变量</td><td>不说明模型大小、序列长度、并发数就比较性能</td><td>所有性能结论必须附带实验条件</td></tr>
+      <tr><td>5</td><td>benchmark 条件不一致</td><td>vLLM 用 bf16，HF 用 fp32，然后比较速度</td><td>精度、模型、输入、硬件必须完全一致</td></tr>
+      <tr><td>6</td><td>冷启动与稳态混淆</td><td>用首次请求（含模型加载）的延迟代表推理延迟</td><td>预热至少 3 次后再测量</td></tr>
+      <tr><td>7</td><td>Prefill 与 Decode 指标混淆</td><td>用 Prefill 的吞吐代表整体性能</td><td>Prefill 是 compute-bound，Decode 是 memory-bound，分别测量</td></tr>
+      <tr><td>8</td><td>吞吐量与延迟混淆</td><td>优化了吞吐量但单请求延迟变差，却说"性能提升了"</td><td>明确优化目标：吞吐量优先还是延迟优先</td></tr>
+      <tr><td>9</td><td>GPU 利用率高 ≠ 性能好</td><td>看到 GPU 利用率 95% 就认为没问题</td><td>高利用率可能是因为在做无用功（如过度抢占/重新计算）</td></tr>
+      <tr><td>10</td><td>OOM 简单归因</td><td>OOM 就认为"模型太大，显存不够"</td><td>检查 KV Cache 占用、并发数、max_model_len 设置、显存碎片</td></tr>
+      <tr><td>11</td><td>版本行为当永久事实</td><td>引用 v0.2 的行为描述 v0.6 的问题</td><td>检查版本号，V0 和 V1 架构有显著差异</td></tr>
+      <tr><td>12</td><td>vLLM 机制与通用机制混淆</td><td>把 Transformer 的 attention 说成是 vLLM 发明的</td><td>区分通用 LLM 概念和 vLLM 特有优化</td></tr>
+      <tr><td>13</td><td>只引二手资料</td><td>只看博客/视频就下结论</td><td>优先查阅 vLLM 官方文档、论文、源码</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ======================== 7. ARTIFACT TEMPLATE ======================== -->
+<section id="template">
+  <h2 class="section-title"><span class="num">7</span>11 项产物模板（后续每轮使用）</h2>
+
+  <p>从 Round 2 开始，每个主题必须产出以下 11 项具体产物。这些产物不仅是学习的证明，也是未来复习和教学的材料。</p>
+
+  <ol class="artifact-list">
+    <li><strong>一句话定义</strong>：用不超过 30 个字概括该机制是什么</li>
+    <li><strong>该机制解决的问题</strong>：如果没有这个机制，会发生什么具体问题？</li>
+    <li><strong>不使用该机制的后果</strong>：具体的性能数据或故障场景</li>
+    <li><strong>分步骤工作原理</strong>：用编号列表描述该机制的完整工作流程</li>
+    <li><strong>与相邻概念的区别</strong>：该机制与最容易混淆的概念有什么不同？</li>
+    <li><strong>具体示例</strong>：一个具体的输入 → 处理过程 → 输出示例</li>
+    <li><strong>最小实验</strong>：一个可以在 10 分钟内运行的实验，能观察到该机制的效果</li>
+    <li><strong>常见误解</strong>：至少 2 个关于该机制的常见错误认知</li>
+    <li><strong>故障/边界场景</strong>：该机制在什么情况下会失效或产生负面效果？</li>
+    <li><strong>三个掌握度检查问题</strong>：能区分"理解"和"背诵"的问题</li>
+    <li><strong>学习者输出任务</strong>：一个需要综合运用该知识才能完成的实践任务</li>
+  </ol>
+
+  <div class="callout note">
+    <div class="callout-title">使用说明</div>
+    每轮学习结束后，将 11 项产物追加到对应的路线登记表中。产物不需要完美——粗糙但真实的理解远好于精致但抄袭的总结。如果某项产物无法完成，标记为"待补充"并记录原因。
+  </div>
+</section>
+
+<!-- ======================== FOOTER ======================== -->
+<div style="text-align: center; padding: 24px; color: #555; font-size: 13px;">
+  <p>vLLM 学习编排系统 · Round 1 · 建立整体认知</p>
+  <p>下一轮预告：Round 2 — 大模型推理基础深入（Prefill/Decode/KV Cache 定量分析）</p>
+  <p style="margin-top: 8px; font-size: 12px;">生成时间：2026-08-12 · 版本：vLLM V1 架构（v0.6+）</p>
+</div>
+
+</div>
+</body>
+</html>
