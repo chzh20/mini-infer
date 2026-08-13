@@ -39,32 +39,35 @@
 
 ---
 
-## 2. 知识点大纲
+## 2. 现代 Packaging 技术全景
+
+先把它看成一条“从源码到用户环境”的交付链，而不是一份配置文件：
 
 ```text
-现代 Packaging
-├── 2.1 分发产物
-│      ├── sdist（.tar.gz）vs wheel（.whl）
-│      └── 用户安装路径实际拿到什么
-├── 2.2 构建系统
-│      ├── pyproject.toml 声明
-│      ├── build backend（hatchling / setuptools）
-│      └── python -m build 流水线
-├── 2.3 项目 metadata 与版本
-│      ├── name / version / requires-python / license
-│      └── semantic versioning（MAJOR.MINOR.PATCH）
-├── 2.4 依赖分层
-│      ├── production dependencies（瘦核心）
-│      └── optional-dependencies：dev / torch / transformers
-├── 2.5 分发面细节
-│      ├── [project.scripts] entry point
-│      ├── package data（非 .py 资源）
-│      └── src layout 包发现
-└── 2.6 安装模式与验收
-       ├── editable vs 普通 install
-       ├── 干净 venv smoke
-       └── 公共 API 边界复核
+2.1 分发产物      sdist / wheel
+       │
+2.2 构建系统      pyproject.toml → frontend → backend
+       │
+2.3 项目身份      name / version / Python 要求 / license
+       │
+2.4 依赖边界      核心 dependencies 与按需 extras
+       │
+2.5 分发面        CLI、package data、src layout、公共 API
+       │
+2.6 安装与验收    editable 开发 → wheel 安装 → 干净 venv smoke
 ```
+
+| 模块 | 需要回答的问题 | `mini-infer` 的落点 |
+|---|---|---|
+| 2.1 分发产物 | 要交付源码、安装包，还是两者？ | `dist/*.tar.gz` + `dist/*.whl` |
+| 2.2 构建系统 | 谁发起构建，谁实际生成产物？ | `build` → `setuptools.build_meta` |
+| 2.3 metadata | 用户安装的包叫什么、是什么版本、支持哪些解释器？ | `[project]` |
+| 2.4 依赖分层 | 默认安装必须拉取什么，哪些能力由用户选择？ | `dependencies` 与 `optional-dependencies` |
+| 2.5 分发面 | 用户怎样 import/执行，资源和源码怎样进入 wheel？ | `__init__.py`、`[project.scripts]`、`src/` |
+| 2.6 验收 | 如何证明交付物脱离开发树仍可用？ | 干净 venv 安装 wheel、import、CLI |
+
+后文的 3.1–3.5 依此顺序展开；不要跳过 2.6。只有通过干净环境验收，前面所有配置才是
+实际可交付的行为。
 
 ---
 
@@ -72,49 +75,143 @@
 
 ### 3.1 什么是 sdist / wheel，为什么需要 build backend
 
+#### 3.1.1 先区分产物、前端与后端
+
 **类比（C++/Java 工程师最熟悉）**：
 
-| Python | 近似对应 |
-|--------|----------|
-| sdist（`.tar.gz`） | 源码包 / Maven source jar / `tar` 起来的源码树 |
-| wheel（`.whl`） | 预构建可安装包（纯 Python 时无编译，但仍是「可直接装进 site-packages」的产物） |
-| build backend | CMake / Maven 里「真正执行构建」的那一层 |
-| `pip install` | 下载产物 →（必要时构建）→ 安装到环境 |
+| Python 概念 | 近似对应 | 本项目中的实例 |
+|---|---|---|
+| sdist（`.tar.gz`） | 源码发布包 / source jar | `mini_infer-0.1.0.dev0.tar.gz` |
+| wheel（`.whl`） | 可直接安装的发布包 | `mini_infer-0.1.0.dev0-py3-none-any.whl` |
+| build frontend | 调用构建的命令行工具 | PyPA 的 `build`，即 `python -m build` |
+| build backend | CMake/Maven 中真正产出工件的一层 | `setuptools.build_meta` |
+| installer | 将工件装入运行环境的工具 | `pip install dist/*.whl` |
 
 ```text
-源码树（src/mini_infer/...）
-        │
-        │  python -m build
-        ▼
-   ┌─────────────┬─────────────┐
-   │  sdist      │  wheel      │
-   │  .tar.gz    │  .whl       │
-   └─────────────┴─────────────┘
-        │              │
-        │              └── 用户日常 pip 优先装这个
-        └── 需要从源码再构建时用（或提供给需要编译扩展的消费者）
+pyproject.toml + 源码树（src/mini_infer/...）
+                    │
+                    ▼
+      build frontend：python -m build
+      读取 [build-system]，准备隔离构建环境
+                    │
+                    ▼
+      build backend：setuptools.build_meta
+                    │
+           ┌────────┴────────┐
+           ▼                 ▼
+        sdist              wheel
+       .tar.gz             .whl
+           │                 │
+           └─────► pip install ◄─────┘
+                         │
+                         ▼
+                    site-packages
 ```
 
-**为什么不能只靠「把目录 zip 一下」？** 因为现代安装工具需要标准 metadata（依赖、Python 版本、入口脚本），并且要知道哪些文件属于包、哪些是开发垃圾（测试、本地 venv、`.pyc`）。build backend 按规范读取 `pyproject.toml`，产出符合 [PyPA](https://packaging.python.org/) 约定的产物。
+**为什么不能只把目录 zip 一下？** 安装器需要标准 metadata（依赖、Python 版本、入口
+脚本），并需要知道哪些文件属于包、哪些是开发垃圾（测试、本地 venv、`.pyc`）。
+PEP 517 定义了前端和后端的协作协议，让构建工具不必绑定在某个具体后端上。
 
-`pyproject.toml` 里的关键段：
+#### 3.1.2 本项目的后端：`setuptools.build_meta`
+
+`setuptools.build_meta` 是 setuptools 提供的 PEP 517 build backend。它实现前端调用的
+标准 hooks，例如 `build_sdist()` 与 `build_wheel()`：前者生成源码分发包，后者生成
+wheel。它的职责是**构建分发包**；当前 `mini-infer` 是纯 Python 项目，因此这里并没有
+编译 C/C++/CUDA 二进制代码。未来加入原生扩展后，backend 才会协调相应的编译步骤。
+
+项目实际使用的配置是：
 
 ```toml
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
-name = "mini-infer"
-version = "0.1.0"
-description = "A minimal, extensible LLM inference pipeline"
-readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "MIT" }
-authors = [{ name = "mini-infer contributors" }]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 ```
 
-> 口诀：**`pyproject.toml` 声明「是什么」；build backend 决定「怎么打成包」。** Day 1 的 `pip install -e .` 已经依赖这段配置；今天要验证它在**非可编辑**安装下同样正确。
+含义如下：
+
+1. 构建前端在隔离环境中准备 `setuptools>=68`；
+2. 前端导入 `setuptools.build_meta`，调用它实现的 PEP 517 hooks；
+3. setuptools 读取 `[project]` 和 `[tool.setuptools.*]` 配置，发现 `src/mini_infer` 并生成
+   metadata、wheel 与 sdist。
+
+`setuptools` 是成熟、广泛使用的选择，但不是 PEP 517 所规定的唯一“官方推荐”后端；
+hatchling、flit 等只要实现同一协议也能被同一个前端调用。对于本项目，没有必要为了
+“现代化”而更换已经可用的 setuptools 后端。
+
+一些旧模板会把 `wheel` 写入 `[build-system].requires`。它曾经很常见，但并不是本项目
+必须保留的固定写法；应以所选 backend 的当前要求为准。当前 `setuptools>=68` 配置已能
+成功构建 wheel，因此不要仅因复制模板而额外添加依赖。
+
+> 口诀：**`pyproject.toml` 声明“项目是什么”和“用谁构建”；frontend 发起构建；backend
+> 决定怎样产出分发包。**
+
+#### 3.1.3 前端命令：`python -m build`
+
+`build` 是 PyPA 维护的独立构建前端（需要安装的第三方包，不是 Python 标准库）。
+`python -m build` 表示使用当前解释器运行它。它是旧式
+`python setup.py sdist bdist_wheel` 的现代等价物，但可对接任意合规 backend，而非把构建
+流程锁死在 setuptools 与当前开发环境。
+
+在项目根目录执行默认命令时，`build` 会：
+
+1. 读取 `[build-system]`，确定 backend 和构建期依赖；
+2. 默认创建临时隔离环境并安装构建依赖；
+3. 从源码构建 sdist；
+4. 将 sdist 解压到临时目录，再从其中构建 wheel；
+5. 将两项产物写入 `dist/`。
+
+第 4 步很重要：默认流程不是只从工作树直接造 wheel，而是在验证“sdist 是否包含重建
+wheel 所需的全部文件”。这正是发现遗漏 `package data`、`MANIFEST.in` 文件或错误包发现的
+机会。
+
+当前纯 Python 项目通常得到：
+
+```text
+dist/
+├── mini_infer-0.1.0.dev0.tar.gz
+└── mini_infer-0.1.0.dev0-py3-none-any.whl
+```
+
+`.whl` 是可直接安装的 **wheel 分发包**；`py3-none-any` 表示它是纯 Python、与平台和
+Python ABI 无关，并不表示其中一定包含“二进制代码”。将来包含 C++/CUDA 扩展时，wheel
+文件名会携带具体 Python ABI、操作系统和架构标签。
+
+本项目的推荐操作如下（使用项目虚拟环境，避免依赖系统是否提供 `python` 命令）：
+
+```bash
+.venv/bin/python -m pip install "build>=1.2"
+.venv/bin/python -m build
+ls dist/
+```
+
+`dist/` 中的文件是可交付产物：可以被 `pip install` 安装，也可以在完成版本、测试和
+安全检查后上传到包索引。构建成功仅证明“产物生成成功”；是否能交付仍须由后面的
+“干净 venv 安装 wheel + import + CLI” smoke test 验证。
+
+#### 3.1.4 用户执行 `pip install` 后到底发生什么
+
+当用户执行 `pip install "mini-infer>=0.1"` 时，pip 先解析版本约束、Python 版本与平台
+兼容性；若索引中存在匹配的 wheel，通常直接下载并安装该 wheel。若不存在匹配 wheel、但有
+sdist，pip 会按该 sdist 的 `pyproject.toml` 建立构建环境、构建 wheel，再安装。对于带有
+C/C++ 扩展的项目，这一步可能要求用户本机具备编译器和对应开发头文件；这正是发布多平台
+原生 wheel 的价值。
+
+安装成功后，环境中通常会出现：
+
+```text
+<venv>/lib/python3.x/site-packages/
+├── mini_infer/                 # .py 文件；原生扩展时还可能有 .so/.pyd
+└── mini_infer-0.1.0.dev0.dist-info/
+    ├── METADATA                # 依赖、license、Python 版本等
+    ├── entry_points.txt         # mini-infer CLI 映射
+    └── RECORD                  # 本次安装写入的文件清单
+```
+
+因此，`dist-info` 不是无关紧要的附属目录：pip 用它来识别已安装版本、依赖和卸载范围。
+
+延伸阅读：[PyPA build documentation](https://build.pypa.io/)、
+[setuptools build system support](https://setuptools.pypa.io/en/latest/build_meta.html)、
+[PyPA 的 pyproject.toml 指南](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/)。
 
 ---
 
@@ -130,11 +227,21 @@ authors = [{ name = "mini-infer contributors" }]
 | `readme` / `license` / `authors` | 人类与工具可读的项目身份 |
 | `dependencies` | 装上就能跑的最小集合 |
 
-**Semantic Versioning（`MAJOR.MINOR.PATCH`）**，对高级工程师的精确含义：
+`name` 是**分发包名**，而 `mini_infer` 是 import package 名；二者可以不同。只有把包
+上传到同一个包索引时，规范化后的 `name` 才必须在该索引中唯一。`requires-python` 会让安装器
+在不兼容解释器上拒绝候选版本，而不是把语法错误推迟到运行时。`readme`、`license` 和
+`authors` 虽不决定 import 行为，却决定包索引展示、许可证识别与用户信任，属于可交付物的一部分。
+
+**语义化版本策略（`MAJOR.MINOR.PATCH`）**，对高级工程师的精确含义：
 
 - **PATCH**：修复，公开 API 不变。
 - **MINOR**：向后兼容的功能（新增符号、新增可选参数且有默认值）。
 - **MAJOR**：破坏性变更（删除/改名公共 API、改默认行为导致静默语义变化）。
+
+注意区分两件事：SemVer 是面向用户的兼容性沟通策略；Python 打包工具实际解析和比较
+版本时遵循 [PEP 440](https://peps.python.org/pep-0440/)。当前的 `0.1.0.dev0` 是一个
+PEP 440 开发预发布版本，不是完整稳定的 `0.1.0` 发布。项目不必机械地“严格遵循
+SemVer”，但必须让版本策略与公开 API 的兼容性承诺一致。
 
 把 Day 3 的 `mini_infer.__all__` 当作「公开 ABI」——**版本号承诺的是这部分，不是内部模块**。内部 `mini_infer.engine._helpers` 怎么改都不该偷偷涨 MAJOR；反过来，改了 `__all__` 里的签名却只涨 PATCH，会破坏下游信任。
 
@@ -153,7 +260,11 @@ __version__ = "0.1.0"
 
 ### 3.3 生产依赖 vs optional dependencies
 
-生产依赖要尽量瘦；重型依赖（PyTorch、Transformers）进 optional extras——这与 Day 13 Adapter「核心层不 import 第三方」是同一条边界在**安装维度**的投影。
+生产依赖要尽量瘦；重型依赖（PyTorch、Transformers）进 optional extras——这与 Day 13 Adapter「核心层不 import 第三方」是同一条边界在**安装维度**的投影。`dependencies` 中的包会随每次普通安装拉取；extras 只有在用户显式选择时才被解析和安装。
+
+下面是课程目标配置：当前仓库尚未实现 PyTorch/Transformers 后端，因此只能先将 `dev`
+部分中的 `build` 落地；`torch` 和 `transformers` extra 应与相应能力一起加入，不能只加名称
+却暗示功能已经可用。
 
 ```toml
 [project]
@@ -205,18 +316,23 @@ mini-infer = "mini_infer.cli:main"
 mini-infer --version
 ```
 
-这与 C++ 安装后的 `bin/` 可执行文件、Java 的 `Main-Class` / `jpackage` 入口是同一类产品体验：用户装完第一件事不是 `python -m ...`，而是敲命令名。
+安装器会在虚拟环境的 `bin/`（macOS/Linux）或 `Scripts/`（Windows）创建启动器，将命令
+映射到 `mini_infer.cli:main`。这与 C++ 安装后的 `bin/` 可执行文件、Java 的
+`Main-Class` / `jpackage` 入口属于同一类产品体验：用户装完第一件事不是 `python -m ...`，
+而是敲命令名。
 
-**package data**：非 `.py` 资源（默认词表、JSON schema、小配置模板）默认不一定进 wheel，需按 backend 显式纳入：
+**package data**：非 `.py` 资源（默认词表、JSON schema、小配置模板）不会因为位于仓库中就必然进入 wheel，需按**实际 backend**显式纳入。`mini-infer` 使用 setuptools，因此示例应写成：
 
 ```toml
-[tool.hatch.build.targets.wheel]
-packages = ["src/mini_infer"]
+[tool.setuptools.package-data]
+mini_infer = ["data/*.json", "schemas/*.json"]
 
-# 若有非代码资源，按 hatchling 文档配置 force-include / 包内资源约定
+# 只有在这些资源真实存在且运行时需要读取时才添加。
 ```
 
-**src layout 为何在 packaging 时更关键**：可编辑安装时，工具知道去 `src/` 找包；一旦配置错误，常见翻车是「开发机 `import mini_infer` 成功（因为 PYTHONPATH/editable），wheel 里却是空包或旧结构」。今天必须用**干净 venv + 装 wheel**戳穿幻觉。
+对于这类数据，运行时代码应使用 `importlib.resources` 读取包内资源，而不是假设仓库相对路径存在。构建后应以 `unzip -l dist/*.whl` 检查资源是否真的在 wheel 中。
+
+**src layout 为什么能防止本地导入幻觉**：仓库根目录不直接包含 `mini_infer/`，解释器不能仅因当前工作目录恰好是项目根而导入它；开发者必须先安装项目，或显式把 `src/` 放入 import path。这使“开发环境能 import、wheel 却漏包”的错误更早暴露。当前的 `where = ["src"]` 正是告诉 setuptools 从 `src/` 发现包。今天仍必须用**干净 venv + 装 wheel**做最终证明。
 
 ---
 
@@ -224,8 +340,8 @@ packages = ["src/mini_infer"]
 
 | 方式 | 命令 | 行为 |
 |------|------|------|
-| editable | `pip install -e .` | 改源码立即生效；适合开发 |
-| 普通 | `pip install dist/*.whl` | 安装到 site-packages 的**拷贝**；改仓库源码不影响已安装包 |
+| editable | `pip install -e .` | 安装器创建指向开发树的可编辑导入机制（常见为 `.pth` 或 import hook）；改源码立即生效，适合开发 |
+| 普通 | `pip install .` 或 `pip install dist/*.whl` | 前者先构建再安装，后者直接安装已有 wheel；文件进入 site-packages，改仓库源码不影响已安装包 |
 
 **今天必须做一次「干净 venv + 装 wheel」**——这是发现「漏打进包的文件 / 错误的 package discovery / entry point 未生效」的最快方法。editable 下「能 import」不代表 wheel 里真有那些模块。
 
@@ -239,12 +355,18 @@ from mini_infer import InferenceEngine, SamplingConfig
 from mini_infer.engine.scheduler import _internal_helper  # 私有约定
 ```
 
+`__all__` 主要约束 `from mini_infer import *`，但更重要的作用是作为维护者写下的 API 承诺。
+以下划线开头的模块或符号是“非公开实现”的信号，而不是 Python 强制访问控制；真正防止用户
+耦合内部结构的方式是提供足够的顶层稳定入口、在文档中只使用这些入口，并把兼容性变更反映在版本策略中。
+
 验收命令（roadmap）：
 
 ```bash
-python -m build
-python -m venv /tmp/mini-infer-test
-# 在新环境中安装 dist/*.whl 并运行 smoke test
+.venv/bin/python -m build
+task_tmp_dir="$(mktemp -d)"
+.venv/bin/python -m venv "$task_tmp_dir/venv"
+"$task_tmp_dir/venv/bin/python" -m pip install --no-deps dist/mini_infer-*.whl
+"$task_tmp_dir/venv/bin/mini-infer" --version
 ```
 
 ---
@@ -258,17 +380,19 @@ python -m venv /tmp/mini-infer-test
 **目标**：metadata、extras、scripts 一次配齐。
 
 **任务**：
-1. 补齐 `[build-system]`（推荐 `hatchling`）与 `[project]`：name / version / requires-python / license / readme / description。
-2. 声明 `dependencies`（核心尽量空或极瘦）与 `optional-dependencies`：`dev` / `torch` / `transformers`。
+1. 核对现有 `[build-system]`（`setuptools.build_meta`）与 `[project]`：name / version / requires-python / license / readme / description。不要无理由切换 backend。
+2. 保持核心 `dependencies` 为空或极瘦，并在 `dev` extra 加入 `build`。为未来设计 `torch` /
+   `transformers` extra 的接口，但只在相应后端实际落地时再将其写入发布配置。
 3. 配置 `[project.scripts]`：`mini-infer = "mini_infer.cli:main"`。
 4. 确认 backend 能发现 `src/mini_infer`（必要时加 hatch/setuptools 的 packages 配置）。
 
 **检查点 / 预期输出**：
 ```bash
-python -c "import tomllib, pathlib; print('ok')"
-# 人工检查 pyproject.toml 含 build-system、optional-dependencies、project.scripts
+.venv/bin/python -c "import tomllib, pathlib; print('ok')"
+# 人工检查 pyproject.toml 含 build-system、dev extra、project.scripts
 ```
-断言：文件可被 TOML 解析；三段关键配置都在；`torch` 不在核心 `dependencies` 里。
+断言：文件可被 TOML 解析；构建工具位于 `dev` 而非核心依赖；`torch` 不在核心
+`dependencies` 里。
 
 ---
 
@@ -277,15 +401,15 @@ python -c "import tomllib, pathlib; print('ok')"
 **目标**：走通 `python -m build`，看懂 `dist/` 产物。
 
 **任务**：
-1. `pip install -e ".[dev]"`（或至少 `pip install build`）。
-2. 执行 `python -m build`。
+1. `.venv/bin/python -m pip install "build>=1.2"`（后续可将它加入 `dev` extra）。
+2. 执行 `.venv/bin/python -m build`。
 3. 列出 `dist/`，确认同时存在 `.tar.gz` 与 `.whl`。
 4. （可选）`unzip -l dist/*.whl | head` 确认 `mini_infer/` 与 `METADATA` 存在。
 
 **检查点 / 预期输出**：
 ```bash
-python -m build
-# Successfully built mini_infer-0.1.0.tar.gz and mini_infer-0.1.0-py3-none-any.whl
+.venv/bin/python -m build
+# Successfully built mini_infer-0.1.0.dev0.tar.gz and mini_infer-0.1.0.dev0-py3-none-any.whl
 ls dist/
 ```
 断言：两种产物都在；wheel 名含 `py3-none-any`（纯 Python 包的典型标签）。
@@ -299,19 +423,19 @@ ls dist/
 **任务**：
 1. 执行：
 ```bash
-python -m build
-python -m venv /tmp/mini-infer-test
-source /tmp/mini-infer-test/bin/activate
-pip install dist/mini_infer-*.whl
-python -c "from mini_infer import SamplingConfig; print(SamplingConfig())"
-mini-infer --version
+.venv/bin/python -m build
+task_tmp_dir="$(mktemp -d)"
+.venv/bin/python -m venv "$task_tmp_dir/venv"
+"$task_tmp_dir/venv/bin/python" -m pip install --no-deps dist/mini_infer-*.whl
+"$task_tmp_dir/venv/bin/python" -c "from mini_infer import SamplingConfig; print(SamplingConfig())"
+"$task_tmp_dir/venv/bin/mini-infer" --version
 ```
 2. 在**未**安装 `[torch]` 的环境中，确认核心 import 不强制加载 torch（若模型模块顶层 import torch，需改为惰性导入或拆 optional 子包——发现即修）。
 3. 写 `docs/packaging-checklist.md`，至少包含：version 是否 bump、extras 是否正确、干净环境可装、CLI 可用、README quick start 对非 editable 用户成立。
 
 **检查点 / 预期输出**：
 ```text
-mini-infer 0.1.0
+mini-infer 0.1.0.dev0
 ```
 断言：干净环境安装成功；CLI 可用；核心 `import` 不依赖未声明的 extras；清单文档存在。
 
@@ -347,7 +471,7 @@ mini-infer 0.1.0
 
 ### 编码思考题
 
-5. 写出一段最小 `pyproject.toml` 片段：包含 hatchling backend、`dev`/`torch` extras、以及 `mini-infer` console script。
+5. 写出一段最小 `pyproject.toml` 片段：包含 `setuptools.build_meta`、`dev`/`torch` extras、以及 `mini-infer` console script。
 
 6. 若 `mini_infer/model/transformer.py` 顶层写了 `import torch`，基础 wheel 的用户 `import mini_infer` 时可能发生什么？给出两种工程修复策略（惰性导入 / 子包拆分）。
 
